@@ -18,4 +18,4 @@ or
 https://axforum.info/forums/showthread.php?p=440314&langid=1#post440314
 
 ## License
-The AxBraceGuideLineExtension source code in this repo is available under the MIT license. See [License.txt](LICENSE.txt).
+The AxTableTypeChangeFix source code in this repo is available under the MIT license. See [License.txt](LICENSE.txt).
