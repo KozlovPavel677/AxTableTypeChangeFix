@@ -1,4 +1,4 @@
--- JEV007444 "Tech_Сделать защиту от изменения типа таблицы в аксапте", PKoz 23.01.2024
+-- JEV007444 "Tech_РЎРґРµР»Р°С‚СЊ Р·Р°С‰РёС‚Сѓ РѕС‚ РёР·РјРµРЅРµРЅРёСЏ С‚РёРїР° С‚Р°Р±Р»РёС†С‹ РІ Р°РєСЃР°РїС‚Рµ", PKoz 23.01.2024
 -- https://axforum.info/forums/showthread.php?p=426156#post426156
 
 -- USE [AXJW12_DEV2_model]
@@ -37,29 +37,29 @@ BEGIN
 
     if (@occurence0 >= 1)
     begin
-        select @j0 = [dbo].[aMRC_posByCountBin](@bytes, @occurence0); -- смещение для группы настроек №2 (4 байта)
+        select @j0 = [dbo].[aMRC_posByCountBin](@bytes, @occurence0); -- СЃРјРµС‰РµРЅРёРµ РґР»СЏ РіСЂСѓРїРїС‹ РЅР°СЃС‚СЂРѕРµРє в„–2 (4 Р±Р°Р№С‚Р°)
     end
     else
     begin
         set @j0 = 2;
     end
 
-    -- теперь определяем смещение для группы настроек №3 (оттуда возьмем байт, определяющий тип табличного буфера Table / View / Map)
+    -- С‚РµРїРµСЂСЊ РѕРїСЂРµРґРµР»СЏРµРј СЃРјРµС‰РµРЅРёРµ РґР»СЏ РіСЂСѓРїРїС‹ РЅР°СЃС‚СЂРѕРµРє в„–3 (РѕС‚С‚СѓРґР° РІРѕР·СЊРјРµРј Р±Р°Р№С‚, РѕРїСЂРµРґРµР»СЏСЋС‰РёР№ С‚РёРї С‚Р°Р±Р»РёС‡РЅРѕРіРѕ Р±СѓС„РµСЂР° Table / View / Map)
     set @internalOffset = 0;
-    set @byte1 = SUBSTRING(@bytes, @j0 + 2, 1); -- 1-й байт из настроек №2
-    set @byte2 = SUBSTRING(@bytes, @j0 + 3, 1); -- 2-й байт из настроек №2
-    set @byte3 = SUBSTRING(@bytes, @j0 + 4, 1); -- 3-й байт из настроек №2
-    set @byte4 = SUBSTRING(@bytes, @j0 + 5, 1); -- 4-й байт из настроек №2
+    set @byte1 = SUBSTRING(@bytes, @j0 + 2, 1); -- 1-Р№ Р±Р°Р№С‚ РёР· РЅР°СЃС‚СЂРѕРµРє в„–2
+    set @byte2 = SUBSTRING(@bytes, @j0 + 3, 1); -- 2-Р№ Р±Р°Р№С‚ РёР· РЅР°СЃС‚СЂРѕРµРє в„–2
+    set @byte3 = SUBSTRING(@bytes, @j0 + 4, 1); -- 3-Р№ Р±Р°Р№С‚ РёР· РЅР°СЃС‚СЂРѕРµРє в„–2
+    set @byte4 = SUBSTRING(@bytes, @j0 + 5, 1); -- 4-Р№ Р±Р°Р№С‚ РёР· РЅР°СЃС‚СЂРѕРµРє в„–2
 
-    if ((@byte1 & 0x4) != 0) -- 0b00000100 -- заполнено TitleField1
+    if ((@byte1 & 0x4) != 0) -- 0b00000100 -- Р·Р°РїРѕР»РЅРµРЅРѕ TitleField1
     begin
         set @internalOffset = @internalOffset + 1;
     end
-    if ((@byte1 & 0x8) != 0) -- 0b00001000 -- заполнено TitleField2
+    if ((@byte1 & 0x8) != 0) -- 0b00001000 -- Р·Р°РїРѕР»РЅРµРЅРѕ TitleField2
     begin
         set @internalOffset = @internalOffset + 1;
     end
-    if ((@byte4 & 0x8) != 0) -- 0b00001000 -- заполнено Extends
+    if ((@byte4 & 0x8) != 0) -- 0b00001000 -- Р·Р°РїРѕР»РЅРµРЅРѕ Extends
     begin
         set @internalOffset = @internalOffset + 1;
     end
@@ -70,26 +70,26 @@ BEGIN
     end
     else
     begin
-        set @j = @j0 + 4; -- это начало "0000" для случая когда не заполнено ни одно из значение Title1, Title2, Extends
+        set @j = @j0 + 4; -- СЌС‚Рѕ РЅР°С‡Р°Р»Рѕ "0000" РґР»СЏ СЃР»СѓС‡Р°СЏ РєРѕРіРґР° РЅРµ Р·Р°РїРѕР»РЅРµРЅРѕ РЅРё РѕРґРЅРѕ РёР· Р·РЅР°С‡РµРЅРёРµ Title1, Title2, Extends
     end
 
     set @tableTypeOffset = 2;
-    if ((@byte1 & 0x10) != 0) -- b00010000 -- заполнено Visible
+    if ((@byte1 & 0x10) != 0) -- b00010000 -- Р·Р°РїРѕР»РЅРµРЅРѕ Visible
     begin
         set @tableTypeOffset = @tableTypeOffset + 1;
     end
-    if ((@byte1 & 0x20) != 0) -- 0b00100000 -- заполнено CacheLookup
+    if ((@byte1 & 0x20) != 0) -- 0b00100000 -- Р·Р°РїРѕР»РЅРµРЅРѕ CacheLookup
     begin
         set @tableTypeOffset = @tableTypeOffset + 1;
     end
 
-    if ((@byte1 & 0x02) != 0    -- 0b00000010 -- есть дочерние DeleteActions
+    if ((@byte1 & 0x02) != 0    -- 0b00000010 -- РµСЃС‚СЊ РґРѕС‡РµСЂРЅРёРµ DeleteActions
         AND
-        (@byte1 & 0x04) = 0 AND -- b00000100 -- и пустое поле TitleField1
-        (@byte1 & 0x08) = 0     -- b00001000 -- и пустое поле TitleField2
+        (@byte1 & 0x04) = 0 AND -- b00000100 -- Рё РїСѓСЃС‚РѕРµ РїРѕР»Рµ TitleField1
+        (@byte1 & 0x08) = 0     -- b00001000 -- Рё РїСѓСЃС‚РѕРµ РїРѕР»Рµ TitleField2
         )
     begin
-        set @tableTypeOffset = @tableTypeOffset + 2; -- добавили смещение в 2 байта (в нем хранится число DeleteActions)
+        set @tableTypeOffset = @tableTypeOffset + 2; -- РґРѕР±Р°РІРёР»Рё СЃРјРµС‰РµРЅРёРµ РІ 2 Р±Р°Р№С‚Р° (РІ РЅРµРј С…СЂР°РЅРёС‚СЃСЏ С‡РёСЃР»Рѕ DeleteActions)
     end
 
 	set @tableType = SUBSTRING(@bytes, @j + @tableTypeOffset, 1);
