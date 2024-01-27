@@ -1,0 +1,2732 @@
+﻿Exportfile for AOT version 1.0 or later
+Formatversion: 1
+
+***Element: CLS
+
+; Microsoft Dynamics AX Class: ModelElementDataTriggers_MRC выгружен
+; --------------------------------------------------------------------------------
+  CLSVERSION 1
+  
+  CLASS #ModelElementDataTriggers_MRC
+    PROPERTIES
+      Name                #ModelElementDataTriggers_MRC
+      RunOn               #Server
+      Origin              #{E61E32A7-A24A-44E4-A026-066A633792AD}
+      LegacyId            #57095
+    ENDPROPERTIES
+    
+    METHODS
+      SOURCE #classDeclaration
+        #/// <summary>
+        #/// Выводит в инфолог скрипт по генерации в базе модели необходимых функций и триггера.
+        #/// </summary>
+        #/// <remarks>
+        #///
+        #/// </remarks>
+        #
+        #// JEV007444 "Tech_Сделать защиту от изменения типа таблицы в аксапте", PKoz 23.01.2024
+        #// https://axforum.info/forums/showthread.php?p=426156#post426156
+        #public class ModelElementDataTriggers_MRC
+        #{
+        #}
+      ENDSOURCE
+      SOURCE #createOrUpdate_aMRC_axTableType
+        #private void createOrUpdate_aMRC_axTableType()
+        #{
+        #    str     sqlQuery;
+        #    ;
+        #
+        #    sqlQuery = strFmt(
+        #@"
+        #-- JEV007444 'Tech_Сделать защиту от изменения типа таблицы в аксапте', PKoz 23.01.2024
+        #-- https://axforum.info/forums/showthread.php?p=426156#post426156
+        #
+        #USE [%1]
+        #GO
+        #
+        #IF OBJECT_ID (N'dbo.aMRC_axTableType') IS NOT NULL
+        #   DROP FUNCTION dbo.aMRC_axTableType
+        #GO
+        #
+        #CREATE FUNCTION dbo.aMRC_axTableType (@bytes varbinary(max))
+        #RETURNS int
+        #/*
+        #    0 - Unknown
+        #    1 - Table
+        #    2 - View
+        #    3 - Map
+        #*/
+        #WITH EXECUTE AS CALLER
+        #AS
+        #BEGIN
+        #    declare    @byte1 tinyint = 0;
+        #    declare    @byte2 tinyint = 0;
+        #    declare    @byte3 tinyint = 0;
+        #    declare    @byte4 tinyint = 0;
+        #
+        #    declare    @occurence0 int = 0;
+        #    declare    @j0 int = 0;
+        #    declare    @j  int = 0;
+        #    declare    @internalOffset int = 0;
+        #    declare    @tableTypeOffset int = 0;
+        #
+        #    declare    @tableType tinyint = 0;
+        #
+        #    set @byte1 = SUBSTRING(@bytes, 3, 1);
+        #    set @occurence0 = @byte1 - 1;
+        #
+        #    if (@occurence0 >= 1)
+        #    begin
+        #        select @j0 = [dbo].[aMRC_posByCountBin](@bytes, @occurence0); -- смещение для группы настроек №2 (4 байта)
+        #    end
+        #    else
+        #    begin
+        #        set @j0 = 2;
+        #    end
+        #
+        #    -- теперь определяем смещение для группы настроек №3 (оттуда возьмем байт, определяющий тип табличного буфера Table / View / Map)
+        #    set @internalOffset = 0;
+        #    set @byte1 = SUBSTRING(@bytes, @j0 + 2, 1); -- 1-й байт из настроек №2
+        #    set @byte2 = SUBSTRING(@bytes, @j0 + 3, 1); -- 2-й байт из настроек №2
+        #    set @byte3 = SUBSTRING(@bytes, @j0 + 4, 1); -- 3-й байт из настроек №2
+        #    set @byte4 = SUBSTRING(@bytes, @j0 + 5, 1); -- 4-й байт из настроек №2
+        #
+        #    if ((@byte1 & 0x4) != 0) -- 0b00000100 -- заполнено TitleField1
+        #    begin
+        #        set @internalOffset = @internalOffset + 1;
+        #    end
+        #    if ((@byte1 & 0x8) != 0) -- 0b00001000 -- заполнено TitleField2
+        #    begin
+        #        set @internalOffset = @internalOffset + 1;
+        #    end
+        #    if ((@byte4 & 0x8) != 0) -- 0b00001000 -- заполнено Extends
+        #    begin
+        #        set @internalOffset = @internalOffset + 1;
+        #    end
+        #
+        #    if (@internalOffset != 0)
+        #    begin
+        #        select @j = [dbo].[aMRC_posByCountBin](@bytes, @occurence0 + @internalOffset);
+        #    end
+        #    else
+        #    begin
+        #        set @j = @j0 + 4; -- это начало '0000' для случая когда не заполнено ни одно из значение Title1, Title2, Extends
+        #    end
+        #
+        #    set @tableTypeOffset = 2;
+        #    if ((@byte1 & 0x10) != 0) -- b00010000 -- заполнено Visible
+        #    begin
+        #        set @tableTypeOffset = @tableTypeOffset + 1;
+        #    end
+        #    if ((@byte1 & 0x20) != 0) -- 0b00100000 -- заполнено CacheLookup
+        #    begin
+        #        set @tableTypeOffset = @tableTypeOffset + 1;
+        #    end
+        #
+        #    if ((@byte1 & 0x02) != 0    -- 0b00000010 -- есть дочерние DeleteActions
+        #        AND
+        #        (@byte1 & 0x04) = 0 AND -- b00000100 -- и пустое поле TitleField1
+        #        (@byte1 & 0x08) = 0     -- b00001000 -- и пустое поле TitleField2
+        #        )
+        #    begin
+        #        set @tableTypeOffset = @tableTypeOffset + 2; -- добавили смещение в 2 байта (в нем хранится число DeleteActions)
+        #    end
+        #
+        #    set @tableType = SUBSTRING(@bytes, @j + @tableTypeOffset, 1);
+        #
+        #    if (@tableType = 0x80 OR -- Regular table
+        #        @tableType = 0x40 OR -- TempDb table
+        #        @tableType = 0x02    -- InMemory table
+        #        )
+        #    begin
+        #        return 1; -- table
+        #    end
+        #
+        #    if (@tableType = 0x04) -- View
+        #    begin
+        #        return 2; -- View
+        #    end
+        #
+        #    if (@tableType = 0x01) -- Map
+        #    begin
+        #        return 3; -- Map
+        #    end
+        #
+        #    return 0; -- Unknown
+        #END
+        #GO
+        #",
+        #    SqlSystem::modelDatabaseBackendName()
+        #    );
+        #
+        #    // this.runSql(sqlQuery);
+        #    info(sqlQuery);
+        #}
+      ENDSOURCE
+      SOURCE #createOrUpdate_aMRC_posByCountBin
+        #private void createOrUpdate_aMRC_posByCountBin()
+        #{
+        #    str     sqlQuery;
+        #    ;
+        #
+        #    sqlQuery = strFmt(
+        #@"
+        #-- JEV007444 'Tech_Сделать защиту от изменения типа таблицы в аксапте', PKoz 23.01.2024
+        #-- https://axforum.info/forums/showthread.php?p=426156#post426156
+        #
+        #USE [%1]
+        #GO
+        #
+        #IF OBJECT_ID (N'dbo.aMRC_posByCountBin') IS NOT NULL
+        #   DROP FUNCTION dbo.aMRC_posByCountBin
+        #GO
+        #
+        #CREATE FUNCTION dbo.aMRC_posByCountBin (@bytes varbinary(max), @_occurence int)
+        #RETURNS int
+        #WITH EXECUTE AS CALLER
+        #AS
+        #BEGIN
+        #    declare    @ret int;
+        #    declare    @counter int;
+        #    declare    @propsLen int;
+        #    declare    @step int;
+        #    declare    @value varbinary(4);
+        #    declare    @j int;
+        #    declare    @_str2Find varbinary(4);
+        #    ;
+        #
+        #    set @ret = 0;
+        #    set @counter = 0;
+        #    set @propsLen = DATALENGTH(@bytes);
+        #    set @step = 2;
+        #    set @value = 0x00;
+        #    set @_str2Find = 0x0000;
+        #
+        #    set @j = 2;
+        #    while @j <= @propsLen and @counter < @_occurence
+        #    begin
+        #        set @value = SUBSTRING(@bytes, @j, 2);
+        #
+        #        if (@value = @_str2Find)
+        #        begin
+        #            set @ret = @j;
+        #            set @counter = @counter + 1;
+        #
+        #            if (@counter >= @_occurence)
+        #            begin
+        #                break;
+        #            end
+        #        end
+        #        set @j = @j + @step;
+        #    end
+        #
+        #    if (not (@counter >= @_occurence) or @_occurence <= 0)
+        #    begin
+        #        set @ret = 0;
+        #    end
+        #
+        #    return @ret;
+        #END
+        #GO
+        #",
+        #    SqlSystem::modelDatabaseBackendName()
+        #    );
+        #
+        #    // this.runSql(sqlQuery);
+        #    info(sqlQuery);
+        #}
+      ENDSOURCE
+      SOURCE #createOrUpdate_Trigger
+        #private void createOrUpdate_Trigger()
+        #{
+        #    str     sqlQuery;
+        #    ;
+        #
+        #    sqlQuery = strFmt(
+        #@"
+        #-- JEV007444 'Tech_Сделать защиту от изменения типа таблицы в аксапте', PKoz 23.01.2024
+        #-- https://axforum.info/forums/showthread.php?p=426156#post426156
+        #
+        #USE [%1]
+        #GO
+        #
+        #IF OBJECT_ID ('dbo.ModelElementData_Trigger_Update_MRC','TR') IS NOT NULL
+        #   DROP TRIGGER dbo.ModelElementData_Trigger_Update_MRC
+        #GO
+        #
+        #CREATE TRIGGER dbo.ModelElementData_Trigger_Update_MRC
+        #   ON  dbo.ModelElementData
+        #   AFTER UPDATE
+        #AS
+        #
+        #-- https://learn.microsoft.com/ru-ru/sql/t-sql/statements/create-trigger-transact-sql?view=sql-server-ver16
+        #if (ROWCOUNT_BIG() = 0) -- должно идти на первом месте даже до SET NOCOUNT ON; иначе всегда выдает 0 и триггер не отрабатывает
+        #begin
+        #    return
+        #end
+        #
+        #-- SET NOCOUNT ON added to prevent extra result sets from
+        #-- interfering with SELECT statements.
+        #SET NOCOUNT ON;
+        #
+        #If (NOT UPDATE(Properties))
+        #begin
+        #    return
+        #end
+        #
+        #IF NOT EXISTS (SELECT 1  -- этот запрос должен отработать быстро, если он что-то вернул, то проверку уже сделаем ниже
+        #           FROM inserted AS i, deleted AS d
+        #           WHERE    i.ElementHandle =  d.ElementHandle
+        #                AND    i.LayerId        =  d.LayerId
+        #                AND i.Properties    != d.Properties
+        #                -- AND i.ElementHandle in (1388458, 1388460, 1388462) -- отладочное ограничение убрали
+        #                AND EXISTS (
+        #                    SELECT 1
+        #                    FROM ModelElement AS me
+        #                    WHERE    me.ElementHandle = i.ElementHandle
+        #                        AND me.ElementType   = 44
+        #                )
+        #          )
+        #begin
+        #    return
+        #end
+        #
+        #declare @axTableTypeI as int;
+        #declare @axTableTypeD as int;
+        #declare @tableName as nvarchar(510); -- ModelElement.Name
+        #declare @errorMsg as nvarchar(440);
+        #
+        #SELECT
+        #@axTableTypeI = [dbo].[aMRC_axTableType](i.Properties),
+        #@axTableTypeD = [dbo].[aMRC_axTableType](d.Properties),
+        #@tableName    = me.Name
+        #FROM inserted AS i, deleted AS d, ModelElement AS me
+        #WHERE    i.ElementHandle =  d.ElementHandle
+        #    AND    i.LayerId        =  d.LayerId
+        #    AND i.Properties    != d.Properties
+        #    AND [dbo].[aMRC_axTableType](i.Properties) != [dbo].[aMRC_axTableType](d.Properties)
+        #    AND me.ElementHandle = i.ElementHandle
+        #    AND me.ElementType   = 44
+        #    -- AND i.ElementHandle in (1388458, 1388460, 1388462) -- отладочное ограничение убрали
+        #    ;
+        #
+        #if (@axTableTypeI is null)
+        #begin
+        #    return -- ok
+        #end
+        #
+        #if (@axTableTypeI != @axTableTypeD)
+        #begin
+        #    set @errorMsg = N'Axapta kernel has gone crazy. It tries to change the table type from ' +
+        #        CAST(@axTableTypeD as nvarchar(max)) + N' to ' + CAST(@axTableTypeI as nvarchar(max)) + N' for axtable ' + @tableName;
+        #
+        #    -- RAISERROR (@errorMsg, 16, 1) -- с этим вариантом аос аксапты потом странно глючил - не мог выбрать запись ни из одной таблицы и ничего вставить не мог, в итоге падал
+        #    /*
+        #    Начиналось все так (у нас кастомизация по записи инфолога в базу)
+        #    Object Server 01: The database reported (session 17 (PKoz)): [Microsoft][SQL Server Native Client 11.0][SQL Server]Invalid object name 'SYSINFOLOGHISTORY_MRC'.. The SQL statement was: 'INSERT INTO SYSINFOLOGHISTORY_MRC (INFO,USERID,COMPANYID,COMPUTERNAME,EXCEPTIONTYPE,CREATEDDATETIME,DEL_CREATEDTIME,RECVERSION,PARTITION,RECID) VALUES (?,?,?,?,?,?,?,?,?,?)'
+        #
+        #    Затем проскакивали такие ошибки в виндовом логе
+        #    Object Server 01: The database reported (session 1 (-AOS-)): [Microsoft][SQL Server Native Client 11.0][SQL Server]Invalid object name 'SYSLASTVALUE'.. The SQL statement was: 'SELECT T1.USERID,T1.RECORDTYPE,T1.ELEMENTNAME,T1.DESIGNNAME,T1.ISKERNEL,T1.COMPANY,T1.RECVERSION,T1.PARTITION,T1.RECID,T1.VALUE FROM SYSLASTVALUE T1 WHERE ((PARTITION=5637144576) AND ((((RECORDTYPE=?) AND (ELEMENTNAME=?)) AND (DESIGNNAME=?)) AND (COMPANY=?)))'
+        #    Object Server 01: The database reported (session 2 (-AOS-)): [Microsoft][SQL Server Native Client 11.0][SQL Server]Invalid object name 'SYSSERVERCONFIG'.. The SQL statement was: 'SELECT TOP 1 T1.ENABLEBATCH,T1.SERVERID,T1.LOADBALANCINGENABLED,T1.CLUSTERREFRECID,101090,T2.MAXBATCHSESSIONS,T2.RECID FROM SYSSERVERCONFIG T1 CROSS JOIN BATCHSERVERCONFIG T2 WHERE (T1.SERVERID=?) AND ((T2.SERVERID=T1.SERVERID) AND ((((T2.ENDTIME>=T2.STARTTIME) AND (?>=T2.STARTTIME)) AND (?<=T2.ENDTIME)) OR ((T2.ENDTIME<T2.STARTTIME) AND ((?>=T2.STARTTIME) OR (?<=T2.ENDTIME)))))'
+        #    А затем постоянно шли такие :
+        #    Object Server 01: The database reported (session 2 (-AOS-)): [Microsoft][SQL Server Native Client 11.0][SQL Server]Invalid object name 'SYSCLIENTSESSIONS'.. The SQL statement was: 'SELECT T1.SESSIONID,T1.SERVERID,T1.VERSION,T1.LOGINDATETIME,T1.LOGINDATETIMETZID,T1.STATUS,T1.USERID,T1.SID,T1.USERLANGUAGE,T1.HELPLANGUAGE,T1.CLIENTTYPE,T1.SESSIONTYPE,T1.CLIENTCOMPUTER,T1.DATAPARTITION,T1.RECVERSION,T1.RECID FROM SYSCLIENTSESSIONS T1 WHERE (SESSIONID=?)'
+        #    Object Server 01: The database reported (session 17 (PKoz)): [Microsoft][SQL Server Native Client 11.0][SQL Server]Invalid object name 'SYSCACHEFLUSH'.. The SQL statement was: 'SELECT T1.SCOPE,T1.FLUSHVERSION,T1.MODIFIEDDATETIME,T1.RECVERSION,T1.RECID,T1.CLEARDATA,T1.FLUSHDATA FROM SYSCACHEFLUSH T1 WHERE (SCOPE=?)'
+        #    Object Server 01: The database reported (session 1 (-AOS-)): [Microsoft][SQL Server Native Client 11.0][SQL Server]Invalid object name 'SYSCLIENTSESSIONS'.. The SQL statement was: 'SELECT T1.SESSIONID,T1.SERVERID,T1.VERSION,T1.LOGINDATETIME,T1.LOGINDATETIMETZID,T1.STATUS,T1.USERID,T1.SID,T1.USERLANGUAGE,T1.HELPLANGUAGE,T1.CLIENTTYPE,T1.SESSIONTYPE,T1.CLIENTCOMPUTER,T1.DATAPARTITION,T1.RECVERSION,T1.RECID FROM SYSCLIENTSESSIONS T1 WHERE ((STATUS=?) AND (SERVERID=?))'
+        #    Потом нередко аос падал или его приходилось рестартовать.
+        #    */
+        #
+        #    RAISERROR (@errorMsg, 20, 1) WITH LOG -- а тут из-за severity >= 20 сиквел вообще закрывает соединение, но лучше уж так.
+        #    -- Все равно ситуация редкая и критичная. И аос после такого нормально себя вел.
+        #    -- Единственная проблема, которую встретили, сразу после такого закрытия сессии, следующий запрос выдавал ошибку
+        #    -- в моем случае такую
+        #    -- Object Server 01: The database reported (session 17 (PKoz)): [Microsoft][SQL Server Native Client 11.0]Ошибка связи. The SQL statement was: 'SELECT @@ROWCOUNT'
+        #    -- (это потому что при тестировании сразу после запроса индуцирующего проблемную ситуацию со сменой типа таблицы, дальше шел запрос 'SELECT @@ROWCOUNT' )
+        #    -- видимо аксапта не сразу понимает, что соединение с БД уже закрыто (по инициативе SQL Server) и пытается очереной запрос послать и тут то до нее доходит...
+        #    -- Но, что хорошо, в этом случае она просто пересоздает соединение и странных проблем нет.
+        #    -- Или мы не выявили пока.
+        #    -- https://learn.microsoft.com/en-us/sql/t-sql/language-elements/raiserror-transact-sql?view=sql-server-ver16
+        #    -- https://learn.microsoft.com/en-us/sql/relational-databases/errors-events/database-engine-error-severities?view=sql-server-ver16
+        #    -- Severity levels from 0 through 18 can be specified by any user. Severity levels from 19 through 25 can only be specified by members of the sysadmin fixed server role or users with ALTER TRACE permissions.
+        #    -- Для использования Severity levels = 20 как в нашем случае, не забыть проверить права на SQL для учетки аоса !
+        #    -- https://learn.microsoft.com/en-us/sql/t-sql/language-elements/raiserror-transact-sql?view=sql-server-ver16&redirectedfrom=MSDN#permissions
+        #
+        #    ROLLBACK TRANSACTION;
+        #end
+        #GO
+        #
+        #ALTER TABLE [dbo].[ModelElementData] ENABLE TRIGGER [ModelElementData_Trigger_Update_MRC]
+        #",
+        #    SqlSystem::modelDatabaseBackendName()
+        #    );
+        #
+        #    // this.runSql(sqlQuery);
+        #    info(sqlQuery);
+        #}
+      ENDSOURCE
+      SOURCE #run
+        #private void run()
+        #{
+        #    ReqReaderWriterLock reqReaderWriterLock;
+        #    str     lockName = funcName();
+        #    ;
+        #
+        #    reqReaderWriterLock = ReqReaderWriterLock::construct();
+        #    reqReaderWriterLock.enterUpdateLock(lockName);
+        #
+        #    this.createOrUpdate_aMRC_posByCountBin();
+        #    this.createOrUpdate_aMRC_axTableType();
+        #    this.createOrUpdate_Trigger();
+        #
+        #    reqReaderWriterLock.exit(lockName);
+        #}
+      ENDSOURCE
+      SOURCE #runSql
+        #private int runSql(str _sqlQuery, boolean _info = false)
+        #{
+        #    ResultSet                       resultSet;
+        #    ResultSetMetaData               resultSetMetaData;
+        #    Set                             permissionSet;
+        #    Statement                       statement;
+        #
+        #    str                             lastErrorTxt;
+        #    int                             lastError;
+        #    int                             ret = -1;
+        #    int                             retInner;
+        #    int                             errorInner;
+        #    str                             errorTxtInner;
+        #
+        #    #define.RowCountQuery("SELECT @@ROWCOUNT")
+        #    ;
+        #
+        #    if (_sqlQuery)
+        #    {
+        #        permissionSet = new Set(Types::Class);
+        #        permissionSet.add(new SqlStatementExecutePermission(_sqlQuery));
+        #        permissionSet.add(new SqlStatementExecutePermission(#RowCountQuery));
+        #        CodeAccessPermission::assertMultiple(permissionSet);
+        #
+        #        try
+        #        {
+        #            //BP Deviation documented
+        #            statement = new Connection().createStatement();
+        #            if (_info)
+        #            {
+        #                info(_sqlQuery);
+        #            }
+        #
+        #            retInner = statement.executeUpdate(_sqlQuery);
+        #            // если все ок, то retInner == 0
+        #            // если не 0, то это код ошибки
+        #            // см. https://axforum.info/forums/showthread.php?p=437479#post437479
+        #            errorInner    = statement.getLastError();
+        #            errorTxtInner = statement.getLastErrorText();
+        #
+        #            resultSet = statement.executeQuery(#RowCountQuery);
+        #            resultSet.next();
+        #            resultSetMetaData = resultSet.getMetaData();
+        #            ret = ViewTableProps_MRC::resultSetFieldValue(resultSet, 1, resultSetMetaData);
+        #            // а здесь ret - это число обработанных записей
+        #        }
+        #        catch
+        #        {
+        #            lastErrorTxt = statement.getLastErrorText();
+        #            lastError    = statement.getLastError();
+        #            info("Was errors");
+        #            info(lastErrorTxt);
+        #            info(strFmt("%1", lastError));
+        #        }
+        #    }
+        #
+        #    return ret;
+        #}
+        #
+      ENDSOURCE
+      SOURCE #main
+        #private static void main(Args _args)
+        #{
+        #    ModelElementDataTriggers_MRC    triggers;
+        #    ;
+        #
+        #    triggers = new ModelElementDataTriggers_MRC();
+        #    info("Запустите в SQL следующие скрипты");
+        #    triggers.run();
+        #    // info("ok");
+        #}
+      ENDSOURCE
+    ENDMETHODS
+  ENDCLASS
+
+***Element: CLS
+
+; Microsoft Dynamics AX Class: ViewTableProps_MRC выгружен
+; --------------------------------------------------------------------------------
+  CLSVERSION 1
+  
+  CLASS #ViewTableProps_MRC
+    PROPERTIES
+      Name                #ViewTableProps_MRC
+      Origin              #{0D4E0BE2-4F33-4A19-9C10-CE588387DAFE}
+      LegacyId            #57094
+    ENDPROPERTIES
+    
+    METHODS
+      SOURCE #classDeclaration
+        #/// <summary>
+        #/// Класс для тестирования и верификации алгоритма распаковки бинарных свойств таблиц ModelElementData.Properties
+        #/// Перебирает все TABLE, MAP, VIEW и по каждой сравнивает результат нашего алгоритма распаковки и
+        #/// то, что аксапта говорит про тип таблицы классом DictTable.
+        #/// Если найдены отличия то пишет в инфолог ERROR !!!
+        #/// </summary>
+        #/// <remarks>
+        #///
+        #/// </remarks>
+        #
+        #// JEV007444 "Tech_Сделать защиту от изменения типа таблицы в аксапте", PKoz 23.01.2024
+        #// https://axforum.info/forums/showthread.php?p=426156#post426156
+        #public class ViewTableProps_MRC
+        #{
+        #    Map bytesStr;
+        #    Map bytesInt;
+        #    Map bytesBits;
+        #    Map chars;
+        #
+        #    boolean     useStoredProcedure;
+        #}
+      ENDSOURCE
+      SOURCE #infoCon
+        #private Exception infoCon(container _con, str _delimiter = "; ", URL helpUrl = '', SysInfoAction _sysInfoAction = null)
+        #{
+        #    SysInfoLogStr   txt = con2Str(_con, _delimiter);
+        #    ;
+        #
+        #    // return infolog.add(Exception::Info, getPrefix()+txt, helpUrl, _sysInfoAction, false);
+        #    return info(txt, helpUrl, _sysInfoAction);
+        #}
+        #
+      ENDSOURCE
+      SOURCE #int2bin
+        #private str int2bin(int _byte)
+        #{
+        #    int j;
+        #    str binRet;
+        #    ;
+        #
+        #    for (j = 7; j >= 0; j --)
+        #    {
+        #        binRet += (_byte & (1 << j)) ? "1" : "0";
+        #    }
+        #
+        #    return binret;
+        #}
+      ENDSOURCE
+      SOURCE #locNum2char
+        #private str  locNum2char(int _code)
+        #{
+        #    str     ret;
+        #    ;
+        #
+        #    switch (true)
+        #    {
+        #        case _code == 0 :
+        #            ret = "-";
+        #            break;
+        #
+        #        case _code >= 1 && _code <= 31 :
+        #            ret = "*";
+        #            break;
+        #
+        #        case _code >= 128 :
+        #            ret = "*";
+        #            break;
+        #
+        #        default :
+        #            ret = num2char(_code);
+        #    }
+        #    return ret;
+        #}
+      ENDSOURCE
+      SOURCE #mergeStr_MRC
+        #// ...
+        #// JEV002732 "Emarsys, дополнительные требования.", shai 20.07.2018
+        #private str mergeStr_MRC(
+        #    str         _str1,
+        #    str         _str2,
+        #    str         _delimiter,
+        #    boolean     _noTrailingDelimeter = false
+        #    )
+        #{
+        #    str ret;
+        #    ;
+        #
+        #    if (_str1)
+        #    {
+        #        ret = _str1 + ((_noTrailingDelimeter && !_str2) ? "" : _delimiter);
+        #    }
+        #
+        #    ret += _str2;
+        #
+        #    return ret;
+        #}
+        #
+      ENDSOURCE
+      SOURCE #parmUseStoredProcedure
+        #public boolean parmUseStoredProcedure(boolean _parm = useStoredProcedure)
+        #{
+        #    ;
+        #
+        #    useStoredProcedure = _parm;
+        #
+        #    return useStoredProcedure;
+        #}
+        #
+      ENDSOURCE
+      SOURCE #posByCount
+        #private int posByCount(
+        #    str     _props,
+        #    str     _str2Find,
+        #    int     _occurence
+        #    // boolean _align = true
+        #    )
+        #{
+        #    int     ret;
+        #    int     counter;
+        #    int     propsLen = strLen(_props);
+        #    int     step = strLen(_str2Find);
+        #    ;
+        #
+        #    while (counter < _occurence)
+        #    {
+        #        ret = strScan(_props, _str2Find, (ret ? ret + step : 1), propsLen);
+        #
+        #        if (ret)
+        #        {
+        #            if (// _align &&
+        #                step == 2 && ret mod 2 == 0) // выравниваем по границе байта
+        #            {
+        #                if (subStr(_props, ret + 1, step) == _str2Find)
+        #                {
+        #                    ret = ret + 1;
+        #                    counter++;
+        #                }
+        #                else
+        #                {
+        #                    dummy_MRC();
+        #                }
+        #            }
+        #            else
+        #            {
+        #                counter++;
+        #            }
+        #        }
+        #
+        #        if (!ret)
+        #        {
+        #            break;
+        #        }
+        #
+        #
+        #    }
+        #
+        #    return ret;
+        #}
+      ENDSOURCE
+      SOURCE #posByCount2
+        #private int posByCount2(
+        #    str     _str2Find,
+        #    str     _str2Find2,
+        #    int     _occurence,
+        #    boolean _align = false
+        #    )
+        #{
+        #    int     ret;
+        #    int     counter;
+        #    int     propsLen = bytesStr.elements();
+        #    int     step = _align ? 2 : 1;
+        #    str     value;
+        #    str     value2;
+        #    str     value3; // для отладки
+        #    str     value4; // для отладки
+        #    int     j;
+        #    ;
+        #
+        #    // for (j = 1; j <= propsLen; j++)
+        #    for (j = _align ? 2 : 1; j <= propsLen; j += step)
+        #    {
+        #        value  = bytesStr.lookup(j);
+        #        value2 = (j + 1 <= propsLen) ? any2str(bytesStr.lookup(j + 1)) : "";
+        #        value3 = chars.lookup(j);
+        #        value4 = bytesBits.lookup(j);
+        #        /*
+        #        info(strFmt("%1,    %2,    %3,    +%4   %5",
+        #            bytesStr .lookup(j),
+        #            chars    .lookup(j),
+        #            bytesBits.lookup(j)
+        #            , counter
+        #            , j
+        #            ));
+        #        */
+        #        if (value == _str2Find && value2 == _str2Find2)
+        #        {
+        #            ret = j;
+        #            counter++;
+        #
+        #            if (counter >= _occurence)
+        #            {
+        #                break;
+        #            }
+        #            // j++;
+        #            if (!_align)
+        #            {
+        #                j += step;
+        #            }
+        #        }
+        #    }
+        #
+        #    if (!(counter >= _occurence) || _occurence <= 0)
+        #    {
+        #        ret = 0;
+        #    }
+        #
+        #    return ret;
+        #}
+      ENDSOURCE
+      SOURCE #show
+        #void show(str _name, boolean    _short, str s)
+        #{
+        #    int         imax;
+        #    int         i;
+        #    str         sout;
+        #    str         str2Print;
+        #    int         code2Print;
+        #    ;
+        #
+        #    info(_name);
+        #    imax = strLen(s);
+        #
+        #    for (i = 1; i <= imax; i += 2)
+        #    {
+        #        code2Print = hex2Int(subStr(s, i, 2));
+        #        str2Print  = this.locNum2Char(code2Print);
+        #        sout += str2Print;
+        #        // sout += num2char(hex2Int(subStr(s, i, 2)));
+        #    }
+        #    // info(sout);
+        #
+        #    if (_short)
+        #    {
+        #        return;
+        #    }
+        #
+        #    for (i = 1; i <= imax; i += 2)
+        #    {
+        #        code2Print = hex2Int(subStr(s, i, 2));
+        #        str2Print  = this.locNum2Char(code2Print);
+        #        // info(con2Str([i, subStr(s, i, 2), "   ", num2char(hex2Int(subStr(s, i, 2)))]));
+        #        info(con2Str([
+        #            // i,
+        #            subStr(s, i, 2), "   ", str2Print]));
+        #    }
+        #    info("");
+        #}
+      ENDSOURCE
+      SOURCE #showBytes
+        #private void showBytes(int _offset, int _bytes2Show)
+        #{
+        #    int     step;
+        #    ;
+        #
+        #    for (step = 0; step <= _bytes2Show; step++)
+        #    {
+        #        if (bytesStr.exists(_offset + step))
+        #        {
+        #            info(strFmt("%1    %2    %3",
+        #                bytesStr .lookup(_offset + step),
+        #                chars    .lookup(_offset + step),
+        #                bytesBits.lookup(_offset + step)
+        #                ));
+        #        }
+        #    }
+        #}
+      ENDSOURCE
+      SOURCE #showId
+        #private void showId(IdentifierName _name)
+        #{
+        #    SysModelElement         sysModelElement;
+        #    SysModelElementData     sysModelElementData;
+        #    ;
+        #
+        #    sysModelElement = xSysModelElement_MRC::findName(_name, SysModelElementType_MRC::Table);
+        #    select sysModelElementData
+        #        where   sysModelElementData.ModelElement == sysModelElement.RecId;
+        #
+        #    this.infoCon([_name, sysModelElement.RecId]);
+        #}
+      ENDSOURCE
+      SOURCE #showProps
+        #private void showProps(int _j, TreeNode _treeNode, container _props2show)
+        #{
+        #    int     i;
+        #    str     toShowStr;
+        #    str     propValue;
+        #    str     propName;
+        #    str     properties;
+        #    ;
+        #
+        #    if (_treeNode)
+        #    {
+        #        properties = _treeNode.AOTgetProperties();
+        #        for (i = 1; i <= conLen(_props2show); i++)
+        #        {
+        #
+        #            if (conPeek(_props2show, i))
+        #            {
+        #                propName  = conPeek(_props2show, i);
+        #                propValue = findProperty(properties, propName);
+        #                toShowStr = this.mergeStr_MRC(toShowStr, strFmt("%1=%2", propName, propValue), ", ");
+        #            }
+        #        }
+        #        this.infoCon([_j, toShowStr]);
+        #    }
+        #    else
+        #    {
+        #        this.infoCon([_j, "Empty treenode"]);
+        #    }
+        #}
+      ENDSOURCE
+      SOURCE #splitProps
+        #private void splitProps(str _props)
+        #{
+        #    int     propsLen = strLen(_props);
+        #    str     s2;
+        #    int     valueInt;
+        #    str     valueBits;
+        #    str     valueChar;
+        #    int     i;
+        #    int     j;
+        #    ;
+        #
+        #    bytesStr      = new Map(Types::Integer, Types::String);
+        #    bytesInt      = new Map(Types::Integer, Types::Integer);
+        #    bytesBits     = new Map(Types::Integer, Types::String);
+        #    chars         = new Map(Types::Integer, Types::String);
+        #
+        #    for (i = 1; i <= propsLen; i+=2)
+        #    {
+        #        j = i div 2 + 1;
+        #        s2 = subStr(_props, i, 2);
+        #        valueInt  = str2int("0x" + s2);
+        #        valueBits = this.int2bin(valueInt);
+        #        valueBits = subStr(valueBits, 1, 4) + " " + subStr(valueBits, 5, 4);
+        #        valueChar = this.locNum2char(valueInt);
+        #
+        #        bytesStr.insert(j, s2);
+        #        bytesInt.insert(j, valueInt);
+        #        bytesBits.insert(j, valueBits);
+        #        chars.insert(j, valueChar);
+        #    }
+        #}
+      ENDSOURCE
+      SOURCE #tablePrefix
+        #private str tablePrefix()
+        #{
+        #    SqlSystem       sqlSystem = new SqlSystem();
+        #
+        #    str     ret;
+        #    ;
+        #
+        #    ret = strFmt(@"[%1%2].[%3]",
+        #        sqlSystem.loginDatabase(), // 1
+        #        @"_model", // 2
+        #        xSession::getDbSchema() // 3  обычно будет DBO
+        #        );
+        #    return ret;
+        #}
+      ENDSOURCE
+      SOURCE #verify
+        #private void verify()
+        #{
+        #    SysModelElement     sysModelElement;
+        #    int                 i;
+        #    ;
+        #
+        #    while select  sysModelElement
+        #        order by Name
+        #        where   sysModelElement.ElementType == 44
+        #    {
+        #        i++;
+        #        if (i mod 100 == 0)
+        #        {
+        #            this.infoCon([i, sysModelElement.Name, ViewTableProps_MRC::timeStamp_MRC(), "DONE"], ";     ");
+        #        }
+        #        if (useStoredProcedure)
+        #        {
+        #            this.verifyTableBySp(sysModelElement.Name, i);
+        #        }
+        #        else
+        #        {
+        #            this.verifyTable(sysModelElement.Name, i);
+        #        }
+        #    }
+        #}
+      ENDSOURCE
+      SOURCE #verifyCon
+        #private void verifyCon()
+        #{
+        #    container   con;
+        #    SysModelElement     sysModelElement;
+        #    int                 i;
+        #    int                 maxI;
+        #    ;
+        #
+        #    con =
+        #    [
+        #'AccessRightsList_MRC',
+        #'AccessRightsListBackup_MRC',
+        #'AifDocumentSetFilter',
+        #'AssetDepEntitySource_JP',
+        #'AssetDepLimitCacheSet_JP',
+        #'BOMPartOfTmp',
+        #'BreakNormLocationLines_MER',
+        #'BreakNormLocationTable_MER',
+        #'Check01_MRC',
+        #'ClientMessage_OK',
+        #'CopyOfMerWegeWorkerId_del',
+        #'CrmmSalesTableTmp',
+        #'CrmmSaleWithDiffClientsTmp',
+        #'CrossCheckInOutView_MRC',
+        #'CustCommActReport_Tmp',
+        #'CustCrmClientActivityDocTmp_MRC',
+        #'CustCrmClientActivityTmp_MRC',
+        #'CustCrmHistoryTmp_MRC',
+        #'CustCrmListTmp_MRC',
+        #'CustInvoiceStandardLineTemplate',
+        #'CustLedgerTransBuf',
+        #'CustPaymentsServiceRecIdTmp',
+        #'DEL_AddressCountryRegionUpgrade',
+        #'DEL_AddressCountyUpgrade',
+        #'DEL_AddressStateUpgrade',
+        #'DEL_AddressZipCodeUpgrade',
+        #'DEL_AifUpgradeEndpointPortMap',
+        #'DEL_BatchGlobal',
+        #'DEL_BIMasterCompanyExchangeRates',
+        #'DEL_BIUdmRoles',
+        #'DEL_BlanketOrderHeaderUpgrade',
+        #'DEL_CFOPMatrixUpgrade_BR',
+        #'DEL_CFOPTableUpgrade_BR',
+        #'DEL_COSHierLine',
+        #'DEL_COSLedgerPeriod',
+        #'DEL_CreditCardADNSetup',
+        #'DEL_CreditCardMicrosoftSetup',
+        #'DEL_CreditCardUpgradeSetup',
+        #'DEL_CustBillOfExchangeUpgrade_JP',
+        #'DEL_CustInvoiceJourUpgrade_BR',
+        #'DEL_DataArea',
+        #'DEL_DirEntityAddress',
+        #'DEL_DirLogisticsPostalAddress',
+        #'DEL_DirPartyAddress',
+        #'DEL_DOCommerceEntityGroupParties',
+        #'DEL_DOCommerceEntityGroups',
+        #'DEL_DOErrors',
+        #'DEL_DOFailedEntities',
+        #'DEL_DOInventDim',
+        #'DEL_EBCWorkCell',
+        #'DEL_EcoResProdUpgradeVariant',
+        #'DEL_EcoResProdUpgradeVariantDim'
+        #    ]+
+        #    [
+        #'DEL_EInvoiceCFDIParameters_MX',
+        #'DEL_EInvoiceHist_MX',
+        #'DEL_EmplTableDiscard',
+        #'DEL_Enums',
+        #'DEL_FBICupomFiscalLines_BR',
+        #'DEL_FBIECFMasterData_BR',
+        #'DEL_FBINotaFiscalLines_BR',
+        #'DEL_FBIZReportAnalytical_BR',
+        #'DEL_FBIZReportData_BR',
+        #'DEL_FiscalDocJourUpgrade_BR',
+        #'DEL_HRMCompJobFunction',
+        #'DEL_HRMCompJobType',
+        #'DEL_IncomingFiscalDocJourModel_BR',
+        #'DEL_Intervals',
+        #'DEL_IntervalSetup',
+        #'DEL_InvalidIECheck_BR',
+        #'DEL_InventPurchUpgradeAccountEntries',
+        #'DEL_InventSumUpgrade',
+        #'DEL_InventTestRelatedOperationsMap',
+        #'DEL_KanbanMapping',
+        #'DEL_KanbanQuantityPolicyUpgrade',
+        #'DEL_KanbanRuleMapping',
+        #'DEL_KanbanRuleProductFamily',
+        #'DEL_LedgerBalancesDimTrans',
+        #'DEL_LedgerBalancesTrans',
+        #'DEL_LedgerPeriodTimeDimension',
+        #'DEL_LogisticsMergeContactInfo',
+        #'DEL_NumberSequenceGroup',
+        #'DEL_NumberSequenceTable',
+        #'DEL_Okuz_10',
+        #'DEL_Okuz_12',
+        #'DEL_Okuz_6',
+        #'DEL_Okuz_7',
+        #'DEL_Okuz_8',
+        #'DEL_Okuz_9',
+        #'DEL_Okuz1',
+        #'DEL_PayrollTaxCodeMapping',
+        #'DEL_PBATreeRouteWrkCtrFixing',
+        #'DEL_PlCorrectionDescription',
+        #'DEL_PmfReqProcessPlanGroup',
+        #'DEL_PRL_401KEmployerContribution',
+        #'DEL_PRL_BurdenPostingSetup',
+        #'DEL_PRL_FringeType',
+        #'DEL_PRLBenefitEntitled',
+        #'DEL_PRLBonusApproved',
+        #'DEL_PRLBranch',
+        #'DEL_PRLBranchGroup',
+        #'DEL_PRLBurdenPayroll',
+        #'DEL_PRLDeductionalDetailsByEmployees',
+        #'DEL_PRLDeductionBenefitBasis',
+        #'DEL_PRLDeductionCodeTable',
+        #'DEL_PRLDeductionDetailsTable'
+        #    ]+
+        #    [
+        #'DEL_PRLEmplAttendanceInfo',
+        #'DEL_PRLEmplBankAccount',
+        #'DEL_PRLEmplBenefits',
+        #'DEL_PRLEmplGroup',
+        #'DEL_PRLEmployeePayElements',
+        #'DEL_PRLEmployeePayElementsTrans',
+        #'DEL_PRLEmployeePayElementsTransPosted',
+        #'DEL_PrlEmployeeUSFederalTaxSetup',
+        #'DEL_PrlEmployeeUSStateTaxSetup',
+        #'DEL_PRLFringeCode',
+        #'DEL_PRLGeneralLiabilityInsurance',
+        #'DEL_PRLHolidayList',
+        #'DEL_PRLJobCat',
+        #'DEL_PRLlocalwithholding',
+        #'DEL_PrlNexus',
+        #'DEL_PRLPayElementsHeader',
+        #'DEL_PRLPayElementsList',
+        #'DEL_PRLPeriodicBenefitApprove',
+        #'DEL_PRLPostingSetupDetails',
+        #'DEL_PRLProjectAttendance',
+        #'DEL_PRLRecurringEarningSchedule',
+        #'DEL_PRLReimbursementApproved',
+        #'DEL_PSAProjComponents',
+        #'DEL_PSAProjQuotationComponentsList',
+        #'DEL_PSAProjQuotationLanguageList',
+        #'DEL_PSAProjQuotationSalesPrice',
+        #'DEL_PSATimecardAlertSetup',
+        #'DEL_PurchBlanketOrderLineUpgrade',
+        #'DEL_PurchPrinterSetup_BR',
+        #'DEL_QmmAssociationTable',
+        #'DEL_QmmCertOfAnalysisLine',
+        #'DEL_QmmCertOfAnalysisLineResults',
+        #'DEL_QmmCertOfAnalysisTable',
+        #'DEL_QmmCorrection',
+        #'DEL_QmmDiagnosticTypes',
+        #'DEL_QmmFinalAnalysis',
+        #'DEL_QmmItemQualityGroup',
+        #'DEL_QmmMiscCharges',
+        #'DEL_QmmOperationItems',
+        #'DEL_QmmOperationMiscCharges',
+        #'DEL_QmmOperations',
+        #'DEL_QmmOperationTimeSheet',
+        #'DEL_QmmOrderItemSampling',
+        #'DEL_QmmOrderLine',
+        #'DEL_QmmOrderLineResults',
+        #'DEL_QmmOrderPackageSampling',
+        #'DEL_QmmOrderTable',
+        #'DEL_QmmParameters',
+        #'DEL_QmmParametersEmailCC',
+        #'DEL_QmmProblemTypes',
+        #'DEL_QmmProblemTypesSetup',
+        #'DEL_QmmQualityGroup',
+        #'DEL_QmmQuarantineZones',
+        #'DEL_QmmRelatedOperations']+
+        #    [
+        #'DEL_QmmTable',
+        #'DEL_QmmTest',
+        #'DEL_QmmTestArea',
+        #'DEL_QmmTestGroup',
+        #'DEL_QmmTestGroupMember',
+        #'DEL_QmmTestTool',
+        #'DEL_QmmVariable',
+        #'DEL_QmmVariableOutcome',
+        #'DEL_ReferencedCustInvoiceJourUpgrade_BR',
+        #'DEL_ReferencedFiscalDocJourUpgrade_BR',
+        #'DEL_ReferencedVendInvoiceJourUpgrade_BR',
+        #'DEL_ReleaseUpdateDictionaries',
+        #'DEL_ReleaseUpdateNumberSequenceList',
+        #'DEL_ReleaseUpdatePartitions',
+        #'DEL_ReleaseUpdatePartitionsMapping',
+        #'DEL_RetailColorGroupTableUpgrade',
+        #'DEL_RetailDefaultCompanyForParametersUpg',
+        #'DEL_RetailSizeGroupTableUpgrade',
+        #'DEL_RetailStoreTableUpgrade',
+        #'DEL_RetailStyleGroupTableUpgrade',
+        #'DEL_RetailTerminalTableUpgrade',
+        #'DEL_RetailTransAction',
+        #'DEL_RetailUpgradedStringID',
+        #'DEL_RetailUserProvidedSchemaLocationID',
+        #'DEL_RetailUserProvidedStaffId',
+        #'DEL_SalesBlanketOrderLineUpgrade',
+        #'DEL_SalesPrinterSetup_BR',
+        #'DEL_smmABCCodeMapping',
+        #'DEL_smmUpgradeParameters',
+        #'DEL_SqlDictionary',
+        #'DEL_SRSModelOptions',
+        #'DEL_SRSModelSecurityKeyCache',
+        #'DEL_SysLastValue',
+        #'DEL_SysRecordLevelSecurity',
+        #'DEL_SystemParametersUpgrade',
+        #'DEL_SystemSequences',
+        #'DEL_SysUserInfo',
+        #'DEL_Table2',
+        #'DEL_TaxCSTTable_BR',
+        #'DEL_tmpPSAProjServiceGroup',
+        #'DEL_tmpPSAProjServiceTable',
+        #'DEL_UnitOfMeasureFixedUnitsUpgrade',
+        #'DEL_UnitUnitOfMeasureUpgrade',
+        #'DEL_upgradeBusRelTable',
+        #'DEL_upgradeContactTable',
+        #'DEL_UserInfo',
+        #'DEL_UserRelationsContactUpgrade',
+        #'DEL_UserRelationsDuplicateUpgrade',
+        #'DEL_UserRelationsInvalidUserUpgrade',
+        #'DEL_VendInvoiceJourUpgrade_BR',
+        #'DEL_VendPurchOrderDateTime',
+        #'DEL_VendPurchOrderDelete',
+        #'DEL_VendPurchOrderJourSplit',
+        #'DEL_VendPurchOrderJourUpdateRef',
+        #'DimensionAttributeValue',
+        #'DimensionFinancialTag',
+        #'DirOrganizationBase',
+        #'EcoResDistinctProductVariant',
+        #'EcoResProductMaster']+
+        #    [
+        #'ExchRatesTmp',
+        #'ExternalLogisticAct_MER_Temp',
+        #'ExtLogComponentPartsMap',
+        #'ExtLogDeliveryReportForCLTmp',
+        #'ExtLogSpecificationReportWithPhotoPdfTmp',
+        #'ExtLogSpecificationSummary10Tmp',
+        #'ExtLogTemplateForUploadingMarkingCodeTmp',
+        #'FinancialDimensionDemo',
+        #'GenericBall',
+        #'HcmEEOPrepReportTmp',
+        #'HcmOSHA300APrepReportTmp',
+        #'HcmPositionForecastCalculationGroup',
+        #'HcmTmpTotalCompStatementBenefit',
+        #'HcmTmpTotalCompStatementEarning',
+        #'HcmTmpTotalCompStatementTax',
+        #'HrmAttendanceExclusionTmp_MRC',
+        #'HrmVipShopperOnlineTsumSalesTmp_MRC',
+        #'ImportExternal_Parameters',
+        #'ImportTm',
+        #'InventCheckResultJwShopLostItemsTmp_MRC',
+        #'InventCheckResultJwShopTmp_MRC',
+        #'InventCostJournalTransMap_MRC',
+        #'InventCountRptGemstoneTotalTmp_MRC',
+        #'InventCountRptPreciousMetalRetTmp_MRC',
+        #'InventDimItemTmp',
+        #'InventForTransferUpdateStatusList_MRC',
+        #'InventGemListTmp_MRC',
+        #'InventItemCollSubcollForJWTTmp_MRC',
+        #'InventItemRageForJmaTmp_MRC',
+        #'InventItemRageForJmtTmp_MRC',
+        #'InventItemsGtdNotSettledTmp_MRC',
+        #'InventItemsOwnershipMap_MRC',
+        #'InventJmaOnHandNameAliasTmp_MRC',
+        #'InventJmaOnHandTmp_MRC',
+        #'InventJournalMarkupMap_MRC',
+        #'InventJournalTransTmp_MRC',
+        #'InventNameAliasForRmaTmp_MRC',
+        #'InventOnHand_ForTransfer_Jour',
+        #'InventPriceChangeApprovalGroupTmp_MRC',
+        #'InventProductForRmaTmp_MRC',
+        #'InventRepairClientMap_MRC',
+        #'InventSalesWithLocationTranferTmp_MRC',
+        #'InventSumInventDimView_MRC',
+        #'InventTransferInfoTmp_MRC',
+        #'JATreeFilterFlatValueTmp_MRC',
+        #'JmaFilterValueTmp_MRC',
+        #'JournalTableSnapshotLinks_MRC',
+        #'JournalTableSnapshotLocations_MRC',
+        #'JournalTransSnapshot_MRC',
+        #'JwtBoutiquesTotalTmp_MRC',
+        #'JwtBrandListTmp_MRC',
+        #'JwtBrandsTotalTmp_MRC',
+        #'JwtCategoriesTotalTmp_MRC',
+        #'JwtFilterListTmp_MRC']+
+        #    [
+        #'JwtItemsTopSaleTmp_MRC',
+        #'JwtMarkupDataTmp_MRC',
+        #'JwtOnlineSalesCategoryTmp_MRC',
+        #'JwtOnlineSalesComparationTmp_MRC',
+        #'JwtOnlineSalesTmp_MRC',
+        #'JwtSalesAndStockByYearTmp_MRC',
+        #'JwtSalesBoutiquesDetailTmp_MRC',
+        #'JwtSalesBrandDetailTmp_MRC',
+        #'JwtSalesByDateTotalTmp_MRC',
+        #'JwtSalesComparationTotalTmp_MRC',
+        #'JwtSalesRangeTmp_MRC',
+        #'JwtSalesTotalTmp_MRC',
+        #'JwtTaxFreeCategoryTmp_MRC',
+        #'JwtTaxFreeTmp_MRC',
+        #'JwtTradeGroundListTmp_MRC',
+        #'KafkaLoaderTopicView',
+        #'KafkaSenderTopicView',
+        #'LedgerJournalAccountMovementTmp',
+        #'MarkingActAcceptanceReportLine_Tmp',
+        #'MarkingCodeExtInvoiceTrans',
+        #'MarkingGiisDmdkBatchGemTmp',
+        #'MarkingGiisDmdkBatchMetalTmp',
+        #'MarkingGiisDmdkBatchTmp',
+        #'MediaImageTmp',
+        #'MerAxToKassaExport_Dictonary',
+        #'MerCompositionChangingLine',
+        #'MerExternalLogisticLineMap',
+        #'MerExternalLogisticParmLine',
+        #'MerInventGtdAlias',
+        #'MerInventTrans',
+        #'MerKassaImportDocTypeTable',
+        #'MerMtmOrderLine_old',
+        #'MerOpenOrderLineFeature',
+        #'MerOpenOrderLineMap',
+        #'MerOpenOrderLineTmp',
+        #'MerOpenOrderPosting',
+        #'MerOpenOrderTableMap',
+        #'MerPersonalAccountTable',
+        #'MerReplaceSimbolsTable',
+        #'MerReportFromOlap',
+        #'MerReportUserActive_Tmp',
+        #'MerRequestPaymentLines',
+        #'MerRetailCashReportQtyOnLine',
+        #'MerSalesDistributionPayment',
+        #'MerWegeWorkerId',
+        #'MerWegeWorkerIdTotal',
+        #'MonBatchJob',
+        #'MonBatchJobInfo',
+        #'MonBatchJobInfoMessage',
+        #'MonBatchParameters',
+        #'NameAliasLogistMap_MRC',
+        #'NameAliasReplace',
+        #'NameAliasSum_MRC']+
+        #    [
+        #'NoComSumTmp',
+        #'Nor_ObjectsClearTree',
+        #'Nor_VoucherTableFieldList',
+        #'OMInternalOrganization',
+        #'OpenOrderArticlesLongOnDocReportTmp',
+        #'OpenOrderArticlesLongOnInvoiceReportTmp',
+        #'OpenOrderPayApproveSenderParm',
+        #'OpenOrderPurchJournalReportTmp',
+        #'PaymCalendarLocationRule',
+        #'PayrollEmpQtrFedTaxRtnHeaderTmp',
+        #'PayrollEmpQuarterlyFedTaxRtnDetailTmp',
+        #'PayrollUnemploymentTaxRtnPrepReportTmp',
+        #'PayrollW2ReportTmp',
+        #'PerformanceCheckLargeBufferDetail',
+        #'PerformanceCheckLargeBufferMaster',
+        #'PerformanceCheckTable',
+        #'PerformanceCheckTable2',
+        #'PerformanceCheckTableTmp',
+        #'PerformanceCheckTableTmpDb_MRC',
+        #'PriceCalc_MRC',
+        #'PriceDiscTableItemAccountRelationTmp',
+        #'PriceDiscTableRefTmp',
+        #'PurchReApprovalPolicyRuleTable',
+        #'PurchRFQCaseTmpLineNumbering',
+        #'PurchRFQCaseTmpLineNumberUpgradeHelper',
+        #'RecordInfoTmp_MRC',
+        #'ReplenishLocationsTmp_MRC',
+        #'RequisitionReplenishContrSubmsnParamExpr',
+        #'RetailCashFillPercentageDataTmp',
+        #'RetailCashFNFDSortTmp',
+        #'RetailCashReportReferenceTmp',
+        #'RetailCashReportRevenueTmp',
+        #'RetailCashSaleVendorReviseTmp',
+        #'RetailCashWorkerLocationTmp',
+        #'RetailDiscountLineMultibuy',
+        #'RetailDiscountMixAndMatch',
+        #'RetailDiscountMultibuy',
+        #'RetailDiscountThreshold',
+        #'RetailLabelTmp',
+        #'RetailOnlineChannelTable',
+        #'RetailSyncOrdersWorkTable',
+        #'SalesAddLineSlaveTmp_MRC',
+        #'SalesPayCustPaymMarkPaidTmp',
+        #'SalesPayLedgerJournalTransTmp',
+        #'SalesVendorSalaryInfo_MRC',
+        #'SalesVendorSalaryTMP_MRC',
+        #'SetupNormLocationTable_MER',
+        #'SinhronizeLocationTable_MRC',
+        #'SinhronizeLocationTableLookUp_MRC',
+        #'SiteDataUploadTableBusData',
+        #'SiteOrderRoutePrintLineTmp'] +
+        #    [
+        #'SiteSalesFinancialMonitoringTmp',
+        #'SiteSortingNameAliasTmp',
+        #'SiteSortingPhotoIdMainSortedTmp',
+        #'SiteSortingPhotoIdMainTmp',
+        #'SiteSortingPhotoIdTmp',
+        #'SoccerBall',
+        #'SourceDocumentHeaderRelievingTmp',
+        #'SourceDocumentLineRelieving',
+        #'SubledgerJourAccEntryRelievingTmpExt_RU',
+        #'SubledgerJournalAccEntryLineRelieving',
+        #'SubledgerJournalAccountEntryRelievingTmp',
+        #'SubledgerJournalEntryTmpTransferID',
+        #'SysAotObjectsInfoTmp_MRC',
+        #'SysComparableTmpText',
+        #'SysCompileLayerInheritanceExtendsMapTmp',
+        #'SysCompileModelList',
+        #'SysDataBaseLogUserLink_MRC',
+        #'SysDataBaseLogUserLinkDelta_MRC',
+        #'SysDataBaseLogUserLinkMap_MRC',
+        #'SysDataBaseLogUserMap_MRC',
+        #'SysEmailPopClientConstraints',
+        #'SysManagedCodeConstructorExpression',
+        #'SysMobileAppUserSettings_MRC',
+        #'SysMobileAppUserVisitingCard_MRC',
+        #'SysNotUseRpgTmp_MRC',
+        #'SysOpFindPrimesTrackingTable',
+        #'SysOpFindPrimesWithTasksTrackingTable',
+        #'SysPolicySourceDocumentRule',
+        #'SysRunUtinTestsTmp_MRC',
+        #'SysSecurityLogItem_MRC',
+        #'SysSystemMonitorLog_MRC',
+        #'SysUserLicenseCountUserTmp',
+        #'SysVersionControlMorphXItemTable',
+        #'SysWindowsAppApprovalsConfig',
+        #'SysZcolumns',
+        #'SysZFTSC',
+        #'SysZfulltext_index_columns',
+        #'SysZfulltext_indexes',
+        #'Table_JEV005046',
+        #'Table1',
+        #'Table2',
+        #'Table2_JEV005046',
+        #'Table3',
+        #'Table4',
+        #'Table7',
+        #'Table73',
+        #'Table7371',
+        #'Table7785',
+        #'TableRelLine',
+        #'TableRelTable'] +
+        #    [
+        #'TableTest',
+        #'TableTestBP',
+        #'TableTestBP2',
+        #'TableTestLog',
+        #'TableTestModified_MRC',
+        #'TableTestModifiedChild_MRC',
+        #'TableTestModifiedFlat_MRC',
+        #'TaxTransGeneralJournalAccEntryDetailTmp',
+        #'TaxTransGeneralJournalAccEntrySummaryTmp',
+        #'Temporary_CompareDocumentLines',
+        #'TestEDTLine_MRC',
+        #'TestTable14',
+        #'TestTable5',
+        #'Tmp_BoxSalesReport',
+        #'Tmp_BreakNormLocationReport',
+        #'Tmp_ComparisonLeftoverDistrib_MER',
+        #'Tmp_ConsolidateLocationId',
+        #'Tmp_ExternalLogisticReport_MER',
+        #'Tmp_InventJournalTableForTransfer',
+        #'Tmp_InventOnHandRetailCashReport',
+        #'Tmp_InventTableMerPurity_MRC',
+        #'Tmp_LookupOpenDocFromPurch',
+        #'Tmp_MerClientDebtReport',
+        #'Tmp_MerDailyTotal',
+        #'Tmp_MerInventHistoryReport',
+        #'Tmp_MerInventTable_Features',
+        #'Tmp_MerLeftoverInOpenOrder',
+        #'Tmp_MerLeftoverOpenOrderOnDate',
+        #'Tmp_MerMtmOrderReport',
+        #'Tmp_MerOpenOrderHistoryReport',
+        #'Tmp_MerReportByRetailTable',
+        #'Tmp_MerSalesAtClientsReport',
+        #'Tmp_MerSalesQuotation_RetailReport',
+        #'Tmp_MerTransferThroughTransitReport',
+        #'Tmp_PrintPriceTagTaskForm',
+        #'TmpCompareText',
+        #'TmpDevAccessorMethod',
+        #'TmpExternalAmount_Tnved',
+        #'TmpFunctionTableCreator',
+        #'TmpInfolog',
+        #'TmpInp_MRC',
+        #'TmpInpSort_MRC',
+        #'TmpInventClassifierAddLine',
+        #'TmpInventClassifierAddLine_PriceChange',
+        #'TmpInventClassifierAddLine_Transfer',
+        #'TmpInventItemRange',
+        #'TmpInventLocation'] +
+        #    [
+        #'TmpInventTableUpdate',
+        #'TmpInventTransferAddLine',
+        #'TmpLedgerJournalSplitHeader',
+        #'TmpMerMarkLine',
+        #'TmpMerOpenOrderLineCreator',
+        #'TmpMerOrderSum',
+        #'TmpMerWegeClientAccountTrans',
+        #'TmpMerWegeWorkerId',
+        #'TmpMerWegeWorkerIdTotal',
+        #'TmpOut_ItemIdMove_MRC',
+        #'TmpProjAdjustmentCreate',
+        #'TmpProjPeriodic',
+        #'TmpQueryRangeValue',
+        #'TmpRepair2FabInventOnHandDP_MRC',
+        #'TmpReport',
+        #'TmpRetailCash_MRC',
+        #'TmpRetailCashSettlement_MRC',
+        #'TmpRMSElementProperties',
+        #'TmpSalesQuotationReport_Voucher',
+        #'TmpSalesTurnoverReport_MRC',
+        #'TmpTest',
+        #'TmpTree',
+        #'TmpUserLogRecord_MRC',
+        #'Tst_Table',
+        #'Tutorial_RecordCache_MRC',
+        #'TutorMapSalesPurchDate',
+        #'TutorPurchDate',
+        #'TutorSalesDate',
+        #'UserRightsTypes',
+        #'UserRightsTypesCorrespondence',
+        #'View7371',
+        #'ViewTestCache_MRC',
+        #'ViewTestCache2_MRC',
+        #'WorkflowWorkItemDelegationParameters',
+        #'XpoPathAllowed_MRC',
+        #'XpoPathParameters_MRC',
+        #'xRefPathsTmp_MRC',
+        #'xRefTmpPathInfo',
+        #'xRefTypeHierarchy'
+        #    ];
+        #
+        #    maxI = conLen(con);
+        #    for (i = 1; i <= maxI; i++)
+        #    {
+        #        sysModelElement.Name = conPeek(con, i);
+        #
+        #        if (useStoredProcedure)
+        #        {
+        #            this.verifyTableBySp(sysModelElement.Name, i);
+        #        }
+        #        else
+        #        {
+        #            this.verifyTable(sysModelElement.Name, i);
+        #        }
+        #    }
+        #}
+      ENDSOURCE
+      SOURCE #verifyTable
+        #private void verifyTable(
+        #    TableName     _table,
+        #    int           _i = 0
+        #    )
+        #{
+        #    SysModelElement         sysModelElement;
+        #    SysModelElementData     sysModelElementData;
+        #    ResultSet               resultSet;
+        #    str                     queryText;
+        #    str     tableNameQuery;
+        #    str     props;
+        #    int     j;
+        #    int     j0;
+        #    // int     step;
+        #    SysDictTable    sysDictTable;
+        #    // TreeNode        treeNode;
+        #    int     byte1;
+        #    int     byte2;
+        #    int     byte3;
+        #    int     byte4;
+        #
+        #    int     byteIntT;
+        #    str     byteStrT;
+        #    str     charT;
+        #    str     bitsT;
+        #    int     tableTypeOffset;
+        #
+        #    int     internalOffset;
+        #    int     occurence0;
+        #    // int     occurence1;
+        #    // int     occurence2;
+        #    str     tableKindByDict;
+        #    str     tableTypeByDict;
+        #    str     errorMsg;
+        #    ;
+        #    // setPrefix(_table);
+        #    select  sysModelElement
+        #        where   sysModelElement.ElementType == 44
+        #            &&  sysModelElement.Name == _table && _table
+        #    join    sysModelElementData
+        #        order by Layer desc
+        #        where   sysModelElementData.ModelElement == sysModelElement.RecId
+        #        ;
+        #
+        #    if (!sysModelElementData)
+        #    {
+        #        error(strFmt("Не нашли %1", _table));
+        #        return;
+        #    }
+        #
+        #    sysDictTable = SysDictTable::newName(_table);
+        #    // treeNode = sysDictTable.treeNode();
+        #
+        #    queryText = strFmt(
+        #@"select
+        #[Name] = (select Name from %1.[SysModelElement] V where V.RECID = A.ElementHandle),
+        #A.ElementHandle,
+        #convert(varchar(max), Properties, 1) AS sProperties,
+        #Properties AS aProperties,
+        #* from %1.[ModelElementData] A
+        #where A.ElementHandle in
+        #(%2)
+        #AND A.LayerId = %3
+        #",
+        #        this.tablePrefix(),
+        #        int642str(sysModelElementData.RecId),
+        #        int2str(sysModelElementData.Layer - 1)
+        #        );
+        #
+        #    resultSet = ViewTableProps_MRC::runSqlQueryResultSet(queryText);
+        #    if (!resultSet || !resultSet.next())
+        #    {
+        #        error(strFmt("Пустой результат %1", _table));
+        #        return;
+        #    }
+        #
+        #    tableNameQuery = resultSet.getString(1);
+        #    props          = resultSet.getString(3);
+        #    props          = subStr(props, 3, strLen(props));
+        #
+        #    this.splitProps(props);
+        #
+        #    byte1 = bytesInt.lookup(3);
+        #    occurence0 = byte1 - 1;
+        #
+        #    if (occurence0 >= 1)
+        #    {
+        #        j0 = this.posByCount2("00", "00", occurence0, true); // смещение для группы настроек №2 (4 байта)
+        #    }
+        #    else
+        #    {
+        #        j0 = 2;
+        #    }
+        #
+        #    // теперь определяем смещение для группы настроек №3 (оттуда возьмем байт, определяющий тип табличного буфера Table / View / Map)
+        #    internalOffset = 0;
+        #    byte1 = bytesInt.lookup(j0 + 2); // 1-й байт из настроек №2
+        #    byte2 = bytesInt.lookup(j0 + 3); // 2-й байт из настроек №2
+        #    byte3 = bytesInt.lookup(j0 + 4); // 3-й байт из настроек №2
+        #    byte4 = bytesInt.lookup(j0 + 5); // 4-й байт из настроек №2
+        #
+        #    if ((byte1 & 0b00000100) != 0) // заполнено TitleField1
+        #    {
+        #        internalOffset++;
+        #    }
+        #    if ((byte1 & 0b00001000) != 0) // заполнено TitleField2
+        #    {
+        #        internalOffset++;
+        #    }
+        #    if ((byte4 & 0b00001000) != 0) // заполнено Extends
+        #    {
+        #        internalOffset++;
+        #    }
+        #
+        #    if (internalOffset)
+        #    {
+        #        j = this.posByCount2("00", "00", occurence0 + internalOffset, true);
+        #    }
+        #    else
+        #    {
+        #        j = j0 + 4; // это начало "0000" для случая когда не заполнено ни одно из значение Title1, Title2, Extends
+        #    }
+        #
+        #    tableTypeOffset = 2;
+        #    if ((byte1 & 0b00010000) != 0) // заполнено Visible
+        #    {
+        #        tableTypeOffset++;
+        #    }
+        #    if ((byte1 & 0b00100000) != 0) // заполнено CacheLookup
+        #    {
+        #        tableTypeOffset++;
+        #    }
+        #
+        #    if ((byte1 & 0b00000010) != 0  // есть дочерние DeleteActions
+        #        &&
+        #        (byte1 & 0b00000100) == 0 && // и пустое поле TitleField1
+        #        (byte1 & 0b00001000) == 0    // и пустое поле TitleField2
+        #        // (byte4 & 0b00001000) == 0 && // и пустое поле Extends
+        #        )
+        #    {
+        #        tableTypeOffset += 2; // добавили смещение в 2 байта (в нем хранится число DeleteActions)
+        #    }
+        #
+        #    byteIntT = bytesInt .lookup(j + tableTypeOffset);
+        #    byteStrT = bytesStr .lookup(j + tableTypeOffset);
+        #    bitsT    = bytesBits.lookup(j + tableTypeOffset);
+        #    charT    = chars    .lookup(j + tableTypeOffset);
+        #
+        #    switch (true)
+        #    {
+        #        case sysDictTable.isView() :
+        #            tableKindByDict = "VIEW";
+        #            tableTypeByDict = "-----";
+        #            break;
+        #
+        #        case sysDictTable.isMap() :
+        #            tableKindByDict = "MAP";
+        #            tableTypeByDict = "-----";
+        #            break;
+        #
+        #        default :
+        #            tableKindByDict = "TABLE";
+        #            if (sysDictTable.isTmp())
+        #            {
+        #                tableTypeByDict = "Tmp";
+        #            }
+        #            else if (sysDictTable.isTempDb())
+        #            {
+        #                tableTypeByDict = "TempDb";
+        #            }
+        #            else
+        #            {
+        #                tableTypeByDict = "Db";
+        #            }
+        #    }
+        #
+        #    errorMsg = '';
+        #    if (
+        #        (tableKindByDict == "VIEW" && byteStrT!= "04") ||
+        #        (tableKindByDict == "MAP" && byteStrT!= "01") ||
+        #        (tableKindByDict == "TABLE" && byteStrT!= "80" && byteStrT!= "40" && byteStrT!= "02")
+        #       )
+        #    {
+        #        errorMsg = 'ERROR !!!';
+        #    }
+        #    if (errorMsg)
+        #    {
+        #        this.infoCon([
+        #            _i ? int2str(_i) : "",
+        #            _table,
+        #            tableKindByDict,
+        #            tableTypeByDict,
+        #            byteStrT,
+        #            charT,
+        #            bitsT,
+        #            byteIntT,
+        #            errorMsg
+        #            ],
+        #            ";     ");
+        #    }
+        #}
+      ENDSOURCE
+      SOURCE #verifyTableBySp
+        #private void verifyTableBySp(
+        #    TableName     _table,
+        #    int           _i = 0
+        #    )
+        #{
+        #    SysModelElement         sysModelElement;
+        #    SysModelElementData     sysModelElementData;
+        #    ResultSet               resultSet;
+        #    str                     queryText;
+        #    str     tableNameQuery;
+        #    /*
+        #    str     props;
+        #    int     j;
+        #    int     j0;
+        #    */
+        #    // int     step;
+        #    SysDictTable    sysDictTable;
+        #    // TreeNode        treeNode;
+        #    /*
+        #    int     byte1;
+        #    int     byte2;
+        #    int     byte3;
+        #    int     byte4;
+        #
+        #    int     byteIntT;
+        #    str     byteStrT;
+        #    str     charT;
+        #    str     bitsT;
+        #    int     tableTypeOffset;
+        #
+        #    int     internalOffset;
+        #    int     occurence0;
+        #    */
+        #    // int     occurence1;
+        #    // int     occurence2;
+        #    str     tableKindByDict;
+        #    str     tableTypeByDict;
+        #    str     errorMsg;
+        #    int     axTableTypeBySp;
+        #    ;
+        #    // setPrefix(_table);
+        #    select  sysModelElement
+        #        where   sysModelElement.ElementType == 44
+        #            &&  sysModelElement.Name == _table && _table
+        #    join    sysModelElementData
+        #        order by Layer desc
+        #        where   sysModelElementData.ModelElement == sysModelElement.RecId
+        #        ;
+        #
+        #    if (!sysModelElementData)
+        #    {
+        #        error(strFmt("Не нашли %1", _table));
+        #        return;
+        #    }
+        #
+        #    sysDictTable = SysDictTable::newName(_table);
+        #    // treeNode = sysDictTable.treeNode();
+        #
+        #    queryText = strFmt(
+        #@"select
+        #[Name] = (select Name from %1.[SysModelElement] V where V.RECID = A.ElementHandle),
+        #A.ElementHandle,
+        #convert(varchar(max), Properties, 1) AS sProperties,
+        #Properties AS aProperties,
+        #%1.[aMRC_axTableType](Properties) AS axTableType,
+        #* from %1.[ModelElementData] A
+        #where A.ElementHandle in
+        #(%2)
+        #AND A.LayerId = %3
+        #",
+        #        this.tablePrefix(),
+        #        int642str(sysModelElementData.RecId),
+        #        int2str(sysModelElementData.Layer - 1)
+        #        );
+        #
+        #    resultSet = ViewTableProps_MRC::runSqlQueryResultSet(queryText);
+        #    if (!resultSet || !resultSet.next())
+        #    {
+        #        error(strFmt("Пустой результат %1", _table));
+        #        return;
+        #    }
+        #
+        #    tableNameQuery  = resultSet.getString(1);
+        #    // props           = resultSet.getString(3);
+        #    // props           = subStr(props, 3, strLen(props));
+        #    axTableTypeBySp = resultSet.getInt(5);
+        #    /*
+        #    this.splitProps(props);
+        #
+        #    byte1 = bytesInt.lookup(3);
+        #    occurence0 = byte1 - 1;
+        #
+        #    if (occurence0 >= 1)
+        #    {
+        #        j0 = this.posByCount2("00", "00", occurence0, true); // смещение для группы настроек №2 (4 байта)
+        #    }
+        #    else
+        #    {
+        #        j0 = 2;
+        #    }
+        #
+        #    // теперь определяем смещение для группы настроек №3 (оттуда возьмем байт, определяющий тип табличного буфера Table / View / Map)
+        #    internalOffset = 0;
+        #    byte1 = bytesInt.lookup(j0 + 2); // 1-й байт из настроек №2
+        #    byte2 = bytesInt.lookup(j0 + 3); // 2-й байт из настроек №2
+        #    byte3 = bytesInt.lookup(j0 + 4); // 3-й байт из настроек №2
+        #    byte4 = bytesInt.lookup(j0 + 5); // 4-й байт из настроек №2
+        #
+        #    if ((byte1 & 0b00000100) != 0) // заполнено TitleField1
+        #    {
+        #        internalOffset++;
+        #    }
+        #    if ((byte1 & 0b00001000) != 0) // заполнено TitleField2
+        #    {
+        #        internalOffset++;
+        #    }
+        #    if ((byte4 & 0b00001000) != 0) // заполнено Extends
+        #    {
+        #        internalOffset++;
+        #    }
+        #
+        #    if (internalOffset)
+        #    {
+        #        j = this.posByCount2("00", "00", occurence0 + internalOffset, true);
+        #    }
+        #    else
+        #    {
+        #        j = j0 + 4; // это начало "0000" для случая когда не заполнено ни одно из значение Title1, Title2, Extends
+        #    }
+        #
+        #    tableTypeOffset = 2;
+        #    if ((byte1 & 0b00010000) != 0) // заполнено Visible
+        #    {
+        #        tableTypeOffset++;
+        #    }
+        #    if ((byte1 & 0b00100000) != 0) // заполнено CacheLookup
+        #    {
+        #        tableTypeOffset++;
+        #    }
+        #
+        #    if ((byte1 & 0b00000010) != 0  // есть дочерние DeleteActions
+        #        &&
+        #        (byte1 & 0b00000100) == 0 && // и пустое поле TitleField1
+        #        (byte1 & 0b00001000) == 0    // и пустое поле TitleField2
+        #        // (byte4 & 0b00001000) == 0 && // и пустое поле Extends
+        #        )
+        #    {
+        #        tableTypeOffset += 2; // добавили смещение в 2 байта (в нем хранится число DeleteActions)
+        #    }
+        #
+        #    byteIntT = bytesInt .lookup(j + tableTypeOffset);
+        #    byteStrT = bytesStr .lookup(j + tableTypeOffset);
+        #    bitsT    = bytesBits.lookup(j + tableTypeOffset);
+        #    charT    = chars    .lookup(j + tableTypeOffset);
+        #    */
+        #    switch (true)
+        #    {
+        #        case sysDictTable.isView() :
+        #            tableKindByDict = "VIEW";
+        #            tableTypeByDict = "-----";
+        #            break;
+        #
+        #        case sysDictTable.isMap() :
+        #            tableKindByDict = "MAP";
+        #            tableTypeByDict = "-----";
+        #            break;
+        #
+        #        default :
+        #            tableKindByDict = "TABLE";
+        #            if (sysDictTable.isTmp())
+        #            {
+        #                tableTypeByDict = "Tmp";
+        #            }
+        #            else if (sysDictTable.isTempDb())
+        #            {
+        #                tableTypeByDict = "TempDb";
+        #            }
+        #            else
+        #            {
+        #                tableTypeByDict = "Db";
+        #            }
+        #    }
+        #
+        #    errorMsg = '';
+        #    if (
+        #        (tableKindByDict == "VIEW" && axTableTypeBySp != 2) ||
+        #        (tableKindByDict == "MAP" && axTableTypeBySp != 3) ||
+        #        (tableKindByDict == "TABLE" && axTableTypeBySp != 1)
+        #       )
+        #    {
+        #        errorMsg = 'ERROR !!!';
+        #    }
+        #    if (errorMsg)
+        #    {
+        #        this.infoCon([
+        #            _i ? int2str(_i) : "",
+        #            _table,
+        #            tableKindByDict,
+        #            tableTypeByDict,
+        #            axTableTypeBySp,
+        #            // byteStrT,
+        #            // charT,
+        #            // bitsT,
+        #            // byteIntT,
+        #            errorMsg
+        #            ],
+        #            ";     ");
+        #    }
+        #}
+      ENDSOURCE
+      SOURCE #view
+        #private void view(
+        #    TableName   _table,
+        #    int         _occurence  = 12,
+        #    int         _bytes2Show = 39,
+        #    container   _props2show = ["TableType"],
+        #    int         _occurence0  = 0,
+        #    int         _bytes2Show0 = 0,
+        #    boolean     _smartOffset = false,
+        #    boolean     _showHeader  = false
+        #    )
+        #{
+        #    SysModelElement         sysModelElement;
+        #    SysModelElementData     sysModelElementData;
+        #    // SysModelLayer           sysModelLayer;
+        #    ResultSet               resultSet;
+        #    str                     queryText;
+        #    str     tableNameQuery;
+        #    str     props;
+        #    int     j;
+        #    int     j0;
+        #    // int     step;
+        #    SysDictTable    sysDictTable;
+        #    TreeNode        treeNode;
+        #    int     byte1;
+        #    // int     byte2;
+        #    // int     byte3;
+        #    // int     byte4;
+        #    int     internalOffset;
+        #    ;
+        #
+        #    select  sysModelElement
+        #        where   sysModelElement.ElementType == 44
+        #            &&  sysModelElement.Name == _table && _table
+        #    join    sysModelElementData
+        #        order by Layer desc
+        #        where   sysModelElementData.ModelElement == sysModelElement.RecId;
+        #
+        #    if (!sysModelElementData)
+        #    {
+        #        error(strFmt("Не нашли %1", _table));
+        #        return;
+        #    }
+        #
+        #    sysDictTable = SysDictTable::newName(_table);
+        #    treeNode = sysDictTable.treeNode();
+        #
+        #    queryText = strFmt(
+        #@"select
+        #[Name] = (select Name from %1.[SysModelElement] V where V.RECID = A.ElementHandle),
+        #A.ElementHandle,
+        #convert(varchar(max), Properties, 1) AS sProperties,
+        #Properties AS aProperties,
+        #* from %1.[ModelElementData] A
+        #where A.ElementHandle in
+        #(%2)
+        #AND A.LayerId = %3
+        #",
+        #        this.tablePrefix(),
+        #        int642str(sysModelElementData.RecId),
+        #        int2str(sysModelElementData.Layer - 1)
+        #        );
+        #
+        #    resultSet = ViewTableProps_MRC::runSqlQueryResultSet(queryText);
+        #    if (!resultSet || !resultSet.next())
+        #    {
+        #        error(strFmt("Пустой результат %1", _table));
+        #        return;
+        #    }
+        #
+        #    tableNameQuery = resultSet.getString(1);
+        #    props          = resultSet.getString(3);
+        #    props          = subStr(props, 3, strLen(props));
+        #
+        #    this.splitProps(props);
+        #    this.infoCon([tableNameQuery, props]);
+        #    this.infoCon([tableNameQuery]);
+        #
+        #    byte1 = bytesInt.lookup(3); // первый байт из настроек
+        #    if ((byte1 & 0b0001) != 0) // заполнено PreviewPartRef
+        #    {
+        #        if (_occurence)
+        #        {
+        #            _occurence++;
+        #        }
+        #        if (_occurence0)
+        #        {
+        #            _occurence0++;
+        #        }
+        #    }
+        #
+        #    if (_occurence0)
+        #    {
+        #        j0 = this.posByCount2("00", "00", _occurence0, true);
+        #    }
+        #    else
+        #    {
+        #        j0 = 1;
+        #    }
+        #    if (_smartOffset && _occurence0)
+        #    {
+        #        j = j0;
+        #        internalOffset = 0;
+        #        byte1 = bytesInt.lookup(j + 2); // первый байт из настроек
+        #        if ((byte1 & 0b00000100) != 0) // заполнено TitleField1
+        #        {
+        #            internalOffset++;
+        #        }
+        #        if ((byte1 & 0b00001000) != 0) // заполнено TitleField2
+        #        {
+        #            internalOffset++;
+        #        }
+        #        if (internalOffset)
+        #        {
+        #            j = this.posByCount2("00", "00", _occurence0 + internalOffset, true);
+        #        }
+        #        else
+        #        {
+        #            j = j0 + 4; // это начало "0000" для случая когда TitleX заполнен или
+        #        }
+        #    }
+        #    else
+        #    {
+        #        if (_occurence)
+        #        {
+        #            j = this.posByCount2("00", "00", _occurence);
+        #        }
+        #        else
+        #        {
+        #            j = 1;
+        #        }
+        #    }
+        #
+        #    this.showProps(j, treeNode, _props2show);
+        #
+        #    if (_showHeader)
+        #    {
+        #        this.showBytes(1, 7);
+        #        info("================");
+        #    }
+        #    if (_occurence0)
+        #    {
+        #        this.infoCon([j0]);
+        #        if (_smartOffset)
+        #        {
+        #            this.infoCon([" "]);
+        #        }
+        #        this.showBytes(j0, _bytes2Show0);
+        #        info("================");
+        #    }
+        #    if (_smartOffset)
+        #    {
+        #        this.infoCon([" "]);
+        #    }
+        #    this.showBytes(j, _bytes2Show);
+        #
+        #    info("----------------");
+        #    info("");
+        #}
+      ENDSOURCE
+      SOURCE #investigateBinFormat
+        #private server static void investigateBinFormat()
+        #{
+        #    ViewTableProps_MRC      props = new ViewTableProps_MRC();
+        #    container   con;
+        #    ;
+        #
+        #    // setPrefix('-');
+        #    // props.view("Table40");
+        #    // props.view("Table140");
+        #    // props.view("Table141");
+        #    // props.view("Table143");
+        #    // props.view("Table144");
+        #    // props.view("Map143");
+        #    // props.view("View143");
+        #
+        #    con = ["TableType","FormRef","SystemTable","ConfigurationKey","CacheLookup", "Visible",
+        #        "SupportInheritance", "TableContents", "SystemTable",
+        #        "SecurityKey", "AOSAuthorization", "CreateRecIdIndex", "SaveDataPerCompany", "SaveDataPerPartition",
+        #        "TableGroup", "PrimaryIndex", "ClusterIndex", "ReplacementKey", "IsLookup", "AnalysisDimensionType",
+        #        "AnalysisIdentifier", "SingularLabel", "ModifiedDateTime", "ModifiedBy", "ModifiedTransactionId", "DEL_modifiedTime",
+        #        "CreatedDateTime", "CreatedBy", "CreatedTransactionId", "DEL_createdTime", "OccEnabled", "DeveloperDocumentation",
+        #        "EntityRelationshipType", "Extends", "Abstract", "InstanceRelationType", "SupportInheritance",
+        #        "ValidTimeStateFieldType", "CountryRegionCodes", "CountryRegionContextField", "MaxAccessMode", "EnforceFKRelation",
+        #        "TitleField1", "TitleField2", "SearchLinkRefName", "SearchLinkRefType", "PreviewPartRef", "ReportRef", "ListPageRef",
+        #        "FormRef", "Label"
+        #    ];
+        #
+        #    // props.verifyTable("AifDocumentSetFilter");
+        #
+        #    // props.verifyTable("AssetDepEntitySource_JP");
+        #    // props.verifyTable("AifDocumentSetFilter");
+        #    // props.verifyTable("AssetDepEntitySource_JP");
+        #    // props.view("AssetDepEntitySource_JP",       11, 39, con, 9, 17, true, true);
+        #    // props.view("AssetDepEntitySource_JP",  0, 2000, con);
+        #    // props.view("AssetDepEntitySource_JP_TableGroup",  0, 2000, con);
+        #    // props.view("AssetDepEntitySource_JP_TableGroup_Conf",  0, 2000, con);
+        #    // props.view("AssetDepEntitySource_JP_TableGroup_CReg",  0, 2000, con);
+        #    // props.view("AssetDepEntitySource_JP_TGCRegVis",  0, 2000, con);
+        #    // props.view("AssetDepEntitySource_JP_TGCRegVisCach",  0, 2000, con);
+        #    // props.view("AssetDepEntitySource_JP_TGCRegVisCLbl",  0, 2000, con);
+        #    // props.view("AssetDepEntitySource_JP_TGCRegVisC_2",  0, 2000, con);
+        #    // props.view("Table41",  0, 2000, con);
+        #    // props.view("AssetDepEntitySource_JP_TGCRegVisC_3",  0, 2000, con);
+        #    // props.view("AssetDepEntitySource_JP_TGCRegVisC_4",  0, 2000, con);
+        #    // props.view("AssetDepEntitySource_JP_TGCRegVisC_22",  0, 2000, con);
+        #    // props.view("AssetDepEntitySource_JP_TGCRegVisC_23",  0, 2000, con); // удалена deleteAction
+        #    // props.view("AssetDepEntitySource_JP_TGCRegVisC_24",  0, 2000, con); // добавлен индекс
+        #    // props.view("AssetDepEntitySource_JP_TGCRegVisC_25",  0, 2000, con); // добавлена группа полей
+        #    // props.view("AssetDepEntitySource_JP_TGCRegVisC_26",  0, 2000, con); // внесли в группу и добавили полей
+        #    // props.view("AssetDepEntitySource_JP_TGCRegVisC_27",  0, 2000, con); // добавили полнотекстовый индекс
+        #    // props.view("AssetDepEntitySource_JP_TGCRegVisC_28",  0, 2000, con); // добавили связь
+        #    // props.view("AssetDepEntitySource_JP_TGCRegVisC_29",  0, 2000, con); // заполнили Title1
+        #    // props.view("AssetDepEntitySource_JP_TGCRegVisC_30",  0, 2000, con); // заполнили Title2
+        #    // props.view("AssetDepEntitySource_JP_TGCRegVisC_31",  0, 2000, con); // создали DeleteAction
+        #    // props.view("AssetDepEntitySource_JP_TGCRegVisC_32",  0, 2000, con); // создали еще DeleteAction
+        #    // props.view("AssetDepEntitySource_JP_TGCRegVisC_22_1",  0, 2000, con); // заполнили Title1, Title2
+        #
+        #    // props.view("AifDocumentSetFilter",  0, 2000, con); //
+        #
+        #
+        #
+        #    // props.view("Table143",              0, 2000, con);
+        #    // props.view("Table143_FormRef",      0, 2000, con);
+        #    // props.view("Table143_SystemTable",  0, 2000, con);
+        #    // props.view("Table143_ConfKey",      0, 2000, con);
+        #    // props.view("Table143_CacheLookup",  0, 2000, con);
+        #    // props.view("Table143_CacheLookup_Found",  0, 2000, con);
+        #    // props.view("Table143_CacheLookup_FoundAndEmpty",  0, 2000, con);
+        #    // props.view("Table143_CacheLookup_EntireTable",  0, 2000, con);
+        #    // props.view("Table143_CacheLookup_Ent_Visible_Yes",  0, 2000, con);
+        #    // props.view("Table143_CacheLookup_Found_Visible_Yes",  0, 2000, con);
+        #    // props.view("Table143_CacheLookup_Found_Visible_Yes",  12, 39, con, 10, 18);
+        #    // props.view("Table143_CacheLookup_Ent_Visible_Yes",  12, 39, con, 10, 18);
+        #    // props.view("Table143_ConfKey",  12, 39, con, 10, 18);
+        #    // props.view("Table143_CacheLookup_None",  12, 39, con, 10, 18);
+        #    // props.view("Map143_CacheLookup_None",  12, 39, con, 10, 18);
+        #    // props.view("View143_CacheLookup_None",  12, 39, con, 10, 18);
+        #    // props.view("Table143_Inher",  12, 39, con, 10, 18);
+        #    // props.view("Table143_Var",  12, 39, con, 10, 18);
+        #    // props.view("Table143_Var",  12, 39, con, 10, 18);
+        #    // props.view("Table143_VarInher1",  12, 39, con, 10, 18);
+        #    // props.view("Table143_VarInher2",  12, 39, con, 10, 18);
+        #    // props.view("Table143_VarInher2",  13, 39, con, 10, 18); // для таблц наследниц - смотрим 13-й блок
+        #
+        #    // props.view("Table143_Var",  0, 2000, con);
+        #    // props.view("Table143_Var",  12, 39, con, 10, 17, true);
+        #    // props.view("Table143_Var",  11, 39, con, 9, 17, true);
+        #
+        #    // props.view("Table143_Var",  11, 39, con, 9, 17, true, true);
+        #    // props.view("Table143",      11, 39, con, 9, 17, true, true);
+        #    // props.view("Table141",      11, 39, con, 9, 17, true, true);
+        #    // props.view("Table144",      11, 39, con, 9, 17, true, true);
+        #    // props.view("Map143",        11, 39, con, 9, 17, true, true);
+        #    // props.view("View143",       11, 39, con, 9, 17, true, true);
+        #    // Table143_VarInher1
+        #
+        #    // props.view("View143_CacheLookup_None_NoQuery",  0, 2000, con);
+        #    // props.view("View143_CacheLookup_None",  0, 2000, con);
+        #    // props.view("View41",  0, 2000, con);
+        #    // props.verifyTable("View41"); // здесь ошибка
+        #
+        #    // props.view("Table143_VarInher1",  0, 2000, con);
+        #    // props.view("Table143_VarInher2",  0, 2000, con);
+        #    // props.verifyTable("Table41");
+        #    // props.view("Table41",  0, 2000, con);
+        #    // props.view("Table41_RegCode",  0, 2000, con);
+        #    // props.view("Table41_RegCode_PT",  0, 2000, con);
+        #    // props.view("Table41_PT",  0, 2000, con);
+        #    // props.view("Table41_PT_Hcm",  0, 2000, con);
+        #    // props.verifyTable("AccessRightsList_MRC");
+        #    // props.verifyTable("AccessRightsListBackup_MRC");
+        #    /*
+        #    props.verifyTable("Table41_Tmp");
+        #    props.verifyTable("Table41");
+        #    props.verifyTable("Table41_RegCode");
+        #    props.verifyTable("Table41_RegCode_PT");
+        #    props.verifyTable("Table41_PT");
+        #    props.verifyTable("Table41_PT_Hcm");
+        #
+        #    props.verifyTable("Table143_VarInher2");
+        #
+        #    props.verifyTable("Table143_Var");
+        #    props.verifyTable("Table143");
+        #    props.verifyTable("Table141");
+        #    props.verifyTable("Table144");
+        #    props.verifyTable("Map143");
+        #    props.verifyTable("View143");
+        #    props.verifyTable("Table143_VarInher1");
+        #    props.verifyTable("Table143_Inher");
+        #
+        #    props.verifyTable("Table143_CacheLookup_Found");
+        #    props.verifyTable("Table143_CacheLookup_Found_Visible_Yes");
+        #    props.verifyTable("Table143_PreviwPartRefEmpty");
+        #    props.verifyTable("Table143_CacheLookup_None_Visible_Yes");
+        #
+        #    props.verifyTable("View40"); // заполнено Query
+        #    props.verifyTable("View41"); //
+        #    props.verifyTable("View43"); // заполнено Query и AOSAuthorization
+        #    props.verifyTable("View44"); // НЕ заполнено Query
+        #
+        #    props.verifyTable("View143_CacheLookup_None");
+        #    props.verifyTable("View143");
+        #
+        #    props.verifyTable("Map40");
+        #    props.verifyTable("Map41");  // здесь ошибка
+        #    props.verifyTable("Map143_CacheLookup_None");
+        #    props.verifyTable("Map143");
+        #    */
+        #
+        #
+        #    /*
+        #    Table143
+        #    Table141
+        #    Table144
+        #    Map143
+        #    View143
+        #    */
+        #
+        #
+        #    // props.view("Table53");
+        #    // props.view("Table56");
+        #    /*
+        #    props.view("Table44_2");
+        #    props.view("Table44_3");
+        #    */
+        #    /*
+        #    props.infoCon([props.posByCount("10000B41000000530061006C00650073005400610062006C006500000049", "00", 2)]);
+        #    props.infoCon([props.posByCount("10000B41000000530061006C00650073005400610062006C006500000049", "00", 1)]);
+        #    props.infoCon([props.posByCount("10000B41000000530061006C00650073005400610062006C006500000049", "00", 0)]);
+        #    props.infoCon([props.posByCount("10000B41000000530061006C00650073005400610062006C006500000049", "00", 3)]);
+        #    props.infoCon([props.posByCount("10000B41000000530061006C00650073005400610062006C006500000049", "00", 4)]);
+        #    props.infoCon([props.posByCount("10000B41000000530061006C00650073005400610062006C006500000049", "00", 5)]);
+        #    props.infoCon([props.posByCount("10000B410", "00", 3)]);
+        #    info('');
+        #    props.splitProps("10000B41000000530061006C00650073005400610062006C006500000049");
+        #    props.infoCon([props.posByCount2("00", 2)]);
+        #    props.infoCon([props.posByCount2("00", 1)]);
+        #    props.infoCon([props.posByCount2("00", 0)]);
+        #    props.infoCon([props.posByCount2("00", 3)]);
+        #    props.infoCon([props.posByCount2("00", 4)]);
+        #    props.infoCon([props.posByCount2("00", 5)]);
+        #    props.splitProps("10000B410");
+        #    props.infoCon([props.posByCount2("00", 3)]);
+        #    */
+        #}
+      ENDSOURCE
+      SOURCE #main
+        #private server static void main(Args _args)
+        #{
+        #    ViewTableProps_MRC      props = new ViewTableProps_MRC();
+        #    ;
+        #
+        #    // props.parmUseStoredProcedure(true); // если нужно проверить хранимку
+        #    props.parmUseStoredProcedure(false); // для проверки алгоритма распаковки бинарных свойств ModelElementDataProperties, реализованного в X++
+        #
+        #    props.verify();
+        #
+        #    props.infoCon(["ok"]);
+        #}
+      ENDSOURCE
+      SOURCE #resultSetFieldValue
+        #// возвращает значение указанного поля ResultSet, определяя тип поля по метаданным
+        #// для ускорения работы экземпляр метаданных можно создать один раз и передавать затем в этот метод
+        #public static anytype resultSetFieldValue(
+        #    ResultSet           _resultSet,
+        #    Counter             _columnId,
+        #    ResultSetMetaData   _metaData  = null,
+        #    boolean             _useString = false)
+        #{
+        #    ResultSetMetaData   metaData;
+        #
+        #    Types               columnType;
+        #
+        #    int                 iType;
+        #    anytype             ret;
+        #
+        #    #AxVersionSwitch_MRC
+        #    ;
+        #
+        #    metaData    = _metaData ? _metaData : _resultSet.getMetaData();
+        #    if (_columnId > metaData.getColumnCount())
+        #    {
+        #        throw error( strFmt( @"В переданном экземпляре %1 колонок %2 - нельзя вернуть значение из запрошенной колонки %3", classStr(ResultSet), metaData.getColumnCount(), _columnId ) );
+        #    }
+        #
+        #    if (_useString)
+        #    {
+        #        ret = '';
+        #    }
+        #
+        #    iType = metaData.getColumnType(_columnId);
+        #    columnType  = iType;
+        #    switch (iType)
+        #    {
+        #        case Types::String :
+        #        case Types::RString :
+        #        case Types::VarString :
+        #            ret = _resultSet.getString(_columnId);
+        #            break;
+        #
+        #        case Types::Int64:
+        #        case 49: // RecId и.т.п
+        #        case Types::Integer: // для int64 ошибочно возвращал тип integer поэтому везде пытаемся читать как int64 //pkoz 19.05.2015
+        #            ret = _resultSet.getInt64(_columnId);
+        #            break;
+        #
+        #        case Types::Real:
+        #            ret = _resultSet.getReal(_columnId);
+        #            break;
+        #
+        #        case Types::Enum:
+        #            ret = _resultSet.getInt(_columnId);
+        #            break;
+        #
+        #        case Types::Date :
+        #            ret = _resultSet.getDate(_columnId);
+        #            break;
+        #
+        #        // #ifnot.Ax4_MRC
+        #        case Types::UtcDateTime:
+        #            ret = _resultSet.getDateTime(_columnId);
+        #            break;
+        #        // #endif
+        #
+        #        case Types::Guid:
+        #            ret = _resultSet.getGuid(_columnId);
+        #            break;
+        #
+        #        case 45:
+        #            ret = _resultSet.getString(_columnId); // по факту будет гуид в строковом представлении
+        #            break;
+        #
+        #        case Types::Container:
+        #            ret = _resultSet.getString(_columnId); // реально придет пустая строка - надо думать как вытаскивать бинарные данные
+        #            break;
+        #
+        #        default :
+        #            throw error( strFmt( @"Не знаю, как получить из %1 значение колонки %2 с типом %3", classStr(ResultSet), _columnId, columnType ) );
+        #    }
+        #    return ret;
+        #}
+        #
+      ENDSOURCE
+      SOURCE #runSql
+        #// ...
+        #// JEV005105 "Sistem_Не хранить права для пользователей входящих в группу админов", shai 04.06.2020
+        #static server int runSql(str _sqlQuery, boolean _info = false)
+        #{
+        #    ResultSet                       resultSet;
+        #    ResultSetMetaData               resultSetMetaData;
+        #    Set                             permissionSet;
+        #    Statement                       statement;
+        #
+        #    str                             lastErrorTxt;
+        #    int                             lastError;
+        #    int                             ret = -1;
+        #    int                             retInner;
+        #    int                             errorInner;
+        #    str                             errorTxtInner;
+        #
+        #    #define.RowCountQuery("SELECT @@ROWCOUNT")
+        #    ;
+        #
+        #    if (_sqlQuery)
+        #    {
+        #        permissionSet = new Set(Types::Class);
+        #        permissionSet.add(new SqlStatementExecutePermission(_sqlQuery));
+        #        permissionSet.add(new SqlStatementExecutePermission(#RowCountQuery));
+        #        CodeAccessPermission::assertMultiple(permissionSet);
+        #
+        #        try
+        #        {
+        #            //BP Deviation documented
+        #            statement = new Connection().createStatement();
+        #            if (_info)
+        #            {
+        #                info(_sqlQuery);
+        #            }
+        #
+        #            retInner = statement.executeUpdate(_sqlQuery);
+        #            // если все ок, то retInner == 0
+        #            // если не 0, то это код ошибки
+        #            // см. https://axforum.info/forums/showthread.php?p=437479#post437479
+        #            errorInner    = statement.getLastError();
+        #            errorTxtInner = statement.getLastErrorText();
+        #
+        #            resultSet = statement.executeQuery(#RowCountQuery);
+        #            resultSet.next();
+        #            resultSetMetaData = resultSet.getMetaData();
+        #            ret = ViewTableProps_MRC::resultSetFieldValue(resultSet, 1, resultSetMetaData);
+        #            // а здесь ret - это число обработанных записей
+        #        }
+        #        catch
+        #        {
+        #            lastErrorTxt = statement.getLastErrorText();
+        #            lastError    = statement.getLastError();
+        #            info("Was errors");
+        #            info(lastErrorTxt);
+        #            info(strFmt("%1", lastError));
+        #        }
+        #    }
+        #
+        #    return ret;
+        #}
+        #
+      ENDSOURCE
+      SOURCE #runSqlQueryResultSet
+        #private server static ResultSet runSqlQueryResultSet(str _sqlQuery, boolean _info = false)
+        #{
+        #    SqlStatementExecutePermission   permission;
+        #    Statement                       statement;
+        #    ResultSet                       resultSet;
+        #    // ResultSetMetaData               resultSetMetaData;
+        #
+        #    str                             lastErrorTxt;
+        #    int                             lastError;
+        #    // int                             i;
+        #    // int                             maxI;
+        #    // container                       ret;
+        #    ;
+        #
+        #    if (_sqlQuery)
+        #    {
+        #        permission = new SqlStatementExecutePermission(_sqlQuery);
+        #        permission.assert();
+        #
+        #        try
+        #        {
+        #            //BP Deviation documented
+        #            statement = new Connection().createStatement();
+        #            if (_info)
+        #            {
+        #                info(_sqlQuery);
+        #            }
+        #
+        #            resultSet = statement.executeQuery(_sqlQuery);
+        #        }
+        #        catch
+        #        {
+        #            lastErrorTxt = statement.getLastErrorText();
+        #            lastError    = statement.getLastError();
+        #            info("Was errors");
+        #            info(lastErrorTxt);
+        #            info(strFmt("%1", lastError));
+        #        }
+        #
+        #    }
+        #
+        #    return resultSet;
+        #}
+        #
+      ENDSOURCE
+      SOURCE #timeStamp_MRC
+        #public static client server str timeStamp_MRC(
+        #    boolean     _xmlFriendlyFormat  = false,
+        #    Timezone    _timezone           = DateTimeUtil::getUserPreferredTimeZone()
+        #    )
+        #{
+        #    utcDateTime dt  = DateTimeUtil::applyTimeZoneOffset(DateTimeUtil::utcNow(), _timezone);
+        #    str         ret = _xmlFriendlyFormat ? DateTimeUtil::toStr(dt) : strFmt('%1', dt);
+        #    ;
+        #
+        #    return ret;
+        #}
+        #
+      ENDSOURCE
+    ENDMETHODS
+  ENDCLASS
+
+***Element: JOB
+
+; Microsoft Dynamics AX Job: JEV007444 выгружен
+; --------------------------------------------------------------------------------
+  JOBVERSION 1
+  
+  SOURCE #JEV007444
+    #// JEV007444 "Tech_Сделать защиту от изменения типа таблицы в аксапте", PKoz 22.05.2023
+    #// https://axforum.info/forums/showthread.php?p=426156#post426156
+    #static void JEV007444(Args _args)
+    #{
+    #    SysModelElement         sysModelElement;
+    #    SysModelElementData     sysModelElementData;
+    #    void showId(IdentifierName _name)
+    #    {
+    #        sysModelElement = xSysModelElement_MRC::findName(_name, SysModelElementType_MRC::Table);
+    #        select sysModelElementData
+    #            where   sysModelElementData.ModelElement == sysModelElement.RecId;
+    #        infoCon([_name, sysModelElement.RecId]);
+    #    }
+    #    str  locNum2char(int _code)
+    #    {
+    #        str     ret;
+    #        ;
+    #
+    #        switch (true)
+    #        {
+    #            case _code == 0 :
+    #                ret = "-";
+    #                break;
+    #
+    #            case _code >= 1 && _code <= 31 :
+    #                ret = "*";
+    #                break;
+    #
+    #            default :
+    #                ret = num2char(_code);
+    #        }
+    #        return ret;
+    #    }
+    #    void aa(str _name, boolean    _short, str s)
+    #    {
+    #        int         imax;
+    #        int         i;
+    #        str         sout;
+    #        str         str2Print;
+    #        int         code2Print;
+    #        ;
+    #
+    #        info(_name);
+    #        imax = strLen(s);
+    #
+    #        for (i = 1; i <= imax; i += 2)
+    #        {
+    #            code2Print = hex2Int(subStr(s, i, 2));
+    #            str2Print  = locNum2Char(code2Print);
+    #            sout += str2Print;
+    #            // sout += num2char(hex2Int(subStr(s, i, 2)));
+    #        }
+    #        // info(sout);
+    #
+    #        if (_short)
+    #        {
+    #            return;
+    #        }
+    #
+    #        for (i = 1; i <= imax; i += 2)
+    #        {
+    #            code2Print = hex2Int(subStr(s, i, 2));
+    #            str2Print  = locNum2Char(code2Print);
+    #            // info(con2Str([i, subStr(s, i, 2), "   ", num2char(hex2Int(subStr(s, i, 2)))]));
+    #            info(con2Str([
+    #                // i,
+    #                subStr(s, i, 2), "   ", str2Print]));
+    #        }
+    #        info("");
+    #    }
+    #    ;
+    #
+    #    // aa("View40",  0, "10000B41000000530061006C00650073005400610062006C006500000049006E00760065006E007400440069006D005000680079007300000042004200000045005000530061006C00650073005400610062006C00650049006E0066006F0000004100730073006500740042006100730069007300000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E0073000000EC7D0A01520065006300490064000000720065006300560065007200730069006F006E0000000104DD00032A0053007500720072006F0067006100740065004B006500790000002A0053007500720072006F0067006100740065004B006500790000000142004F004D00000006050001180000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #    // aa("Map40",   0, "10000B41000000530061006C00650073005400610062006C006500000049006E00760065006E007400440069006D0050006800790073000000000045005000530061006C00650073005400610062006C00650049006E0066006F000000000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E0073000000EC7D0201520065006300490064000000720065006300560065007200730069006F006E0000000101DD00032A0053007500720072006F0067006100740065004B006500790000002A0053007500720072006F0067006100740065004B006500790000000142004F004D000000060001180000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #    // aa("View43",  0, "10000B41000000530061006C00650073005400610062006C006500000049006E00760065006E007400440069006D005000680079007300000042004200000045005000530061006C00650073005400610062006C00650049006E0066006F0000004100730073006500740042006100730069007300000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E0073000000EC7D0A01520065006300490064000000720065006300560065007200730069006F006E0000000104DD00032A0053007500720072006F0067006100740065004B006500790000002A0053007500720072006F0067006100740065004B006500790000000142004F004D00000006000001180000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #    // aa("Table40",  0, "10000B41000000530061006C00650073005400610062006C006500000049006E00760065006E007400440069006D005000680079007300000042004200000045005000530061006C00650073005400610062006C00650049006E0066006F000000000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E0073000000EC7D0B11520065006300490064000000720065006300560065007200730069006F006E0000000180DD00032A0053007500720072006F0067006100740065004B006500790000002A0053007500720072006F0067006100740065004B006500790000000142004F004D000000060000000101180000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #    // aa("Table44",  0, "10000B41000000530061006C00650073005400610062006C006500000049006E00760065006E007400440069006D005000680079007300000042004200000045005000530061006C00650073005400610062006C00650049006E0066006F000000000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E0073000000EC7D0B11520065006300490064000000720065006300560065007200730069006F006E0000000180DD00032A0053007500720072006F0067006100740065004B006500790000002A0053007500720072006F0067006100740065004B006500790000000142004F004D000000060000010101180000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #    // aa("Table45",  0, "10000B41000000530061006C00650073005400610062006C006500000049006E00760065006E007400440069006D005000680079007300000042004200000045005000530061006C00650073005400610062006C00650049006E0066006F000000000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E0073000000EC7D0B11520065006300490064000000720065006300560065007200730069006F006E0000000102DD00032A0053007500720072006F0067006100740065004B006500790000002A0053007500720072006F0067006100740065004B006500790000000142004F004D000000060000000101180000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #    // aa("Table46",  0, "10000B41000000530061006C00650073005400610062006C006500000049006E00760065006E007400440069006D005000680079007300000042004200000045005000530061006C00650073005400610062006C00650049006E0066006F000000000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E0073000000EC6D0B11520065006300490064000000720065006300560065007200730069006F006E0000000180DD00032A0053007500720072006F0067006100740065004B006500790000002A0053007500720072006F0067006100740065004B0065007900000042004F004D000000060000000101180000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #    // aa("Table47",  0, "10000B41000000530061006C00650073005400610062006C006500000049006E00760065006E007400440069006D005000680079007300000042004200000045005000530061006C00650073005400610062006C00650049006E0066006F000000000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E0073000000EC7D0B11520065006300490064000000720065006300560065007200730069006F006E0000000180DD00032A0053007500720072006F0067006100740065004B006500790000002A0053007500720072006F0067006100740065004B006500790000000142004F004D000000020000000101180000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #    // aa("Table48",  0, "10000B41000000530061006C00650073005400610062006C006500000049006E00760065006E007400440069006D005000680079007300000042004200000045005000530061006C00650073005400610062006C00650049006E0066006F000000000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E0073000000FC7D0B11520065006300490064000000720065006300560065007200730069006F006E000000040180DD00032A0053007500720072006F0067006100740065004B006500790000002A0053007500720072006F0067006100740065004B006500790000000142004F004D000000060000000101180000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #    // aa("Table49",  0, "10000B41000000530061006C00650073005400610062006C006500000049006E00760065006E007400440069006D005000680079007300000042004200000045005000530061006C00650073005400610062006C00650049006E0066006F000000000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E0073000000EC7D0B11520065006300490064000000720065006300560065007200730069006F006E0000000180DD00032A0053007500720072006F0067006100740065004B006500790000002A0053007500720072006F0067006100740065004B006500790000000142004F004D000000060004000101180000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #    // aa("Table50",  0, "10000B41000000530061006C00650073005400610062006C006500000049006E00760065006E007400440069006D005000680079007300000042004200000045005000530061006C00650073005400610062006C00650049006E0066006F000000000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E0073000000EC7D0B11520065006300490064000000720065006300560065007200730069006F006E0000000280DD00032A0053007500720072006F0067006100740065004B006500790000002A0053007500720072006F0067006100740065004B006500790000000142004F004D000000060000000101180000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #    // aa("Table51",  0, "10000B41000000530061006C00650073005400610062006C006500000049006E00760065006E007400440069006D005000680079007300000042004200000045005000530061006C00650073005400610062006C00650049006E0066006F000000000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E0073000000EC7D0B01520065006300490064000000720065006300560065007200730069006F006E0000000180DD00032A0053007500720072006F0067006100740065004B006500790000002A0053007500720072006F0067006100740065004B006500790000000142004F004D0000000600000001180000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #    // aa("Table52",  0, "10000B41000000530061006C00650073005400610062006C006500000049006E00760065006E007400440069006D005000680079007300000042004200000045005000530061006C00650073005400610062006C00650049006E0066006F000000000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E0073000000EC7D0B01520065006300490064000000720065006300560065007200730069006F006E0000000180DD000349006E006400650078005400650073007400490064007800000049006E00640065007800540065007300740049006400780000000142004F004D0000000600000001180000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #    // aa("Table53",  0, "10000B41000000530061006C00650073005400610062006C006500000049006E00760065006E007400440069006D005000680079007300000042004200000045005000530061006C00650073005400610062006C00650049006E0066006F000000000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E0073000000EC7D0B01520065006300490064000000720065006300560065007200730069006F006E0000000180DD000349006E006400650078005400650073007400490064007800000049006E00640065007800540065007300740049006400780000000142004F004D0000000400000001180000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #    // aa("Table55",  0, "10000B41000000530061006C00650073005400610062006C006500000049006E00760065006E007400440069006D005000680079007300000042004200000045005000530061006C00650073005400610062006C00650049006E0066006F000000000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E0073000000EC7D0B11520065006300490064000000720065006300560065007200730069006F006E0000000180DD00032A0053007500720072006F0067006100740065004B006500790000002A0053007500720072006F0067006100740065004B006500790000000142004F004D000000070000000101180000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #    // aa("Table56",  0, "10000B41000000530061006C00650073005400610062006C006500000049006E00760065006E007400440069006D005000680079007300000042004200000045005000530061006C00650073005400610062006C00650049006E0066006F000000000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E0073000000EC7D0B11520065006300490064000000720065006300560065007200730069006F006E0000000180DD00032A0053007500720072006F0067006100740065004B006500790000002A0053007500720072006F0067006100740065004B006500790000000142004F004D0000000E0000000101180000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #    // aa("Table57",  0, "10000B41000000530061006C00650073005400610062006C006500000049006E00760065006E007400440069006D005000680079007300000042004200000045005000530061006C00650073005400610062006C00650049006E0066006F000000000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E0073000000EC7D0B11520065006300490064000000720065006300560065007200730069006F006E0000000180DD00042A0053007500720072006F0067006100740065004B006500790000002A0053007500720072006F0067006100740065004B006500790000000142004F004D000000060000000101180000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #    // aa("Table58",  0, "10000B41000000530061006C00650073005400610062006C006500000049006E00760065006E007400440069006D005000680079007300000042004200000045005000530061006C00650073005400610062006C00650049006E0066006F000000000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E0073000000EC7D0B15520065006300490064000000720065006300560065007200730069006F006E0000000180DD00032A0053007500720072006F0067006100740065004B006500790000002A0053007500720072006F0067006100740065004B006500790000000142004F004D00000006000000015200650070006C0061006300650030003000490064007800000001180000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #    // aa("Table59",  0, "10000B41000000530061006C00650073005400610062006C006500000049006E00760065006E007400440069006D005000680079007300000042004200000045005000530061006C00650073005400610062006C00650049006E0066006F000000000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E0073000000EC7D0B11520065006300490064000000720065006300560065007200730069006F006E0000000180DD00032A0053007500720072006F0067006100740065004B006500790000002A0053007500720072006F0067006100740065004B006500790000000142004F004D000000060100000101180000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #    // aa("Table60",  0, "10000B41000000530061006C00650073005400610062006C006500000049006E00760065006E007400440069006D005000680079007300000042004200000045005000530061006C00650073005400610062006C00650049006E0066006F000000000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E0073000000EC7D8B11520065006300490064000000720065006300560065007200730069006F006E0000000180DD00032A0053007500720072006F0067006100740065004B006500790000002A0053007500720072006F0067006100740065004B006500790000000142004F004D00000006000000030101180000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #    // aa("Table61",  0, "10000B41000000530061006C00650073005400610062006C006500000049006E00760065006E007400440069006D005000680079007300000042004200000045005000530061006C00650073005400610062006C00650049006E0066006F000000000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E0073000000EC7D1B11520065006300490064000000720065006300560065007200730069006F006E0000000180DD00032A0053007500720072006F0067006100740065004B006500790000002A0053007500720072006F0067006100740065004B006500790000000142004F004D00000006006D006F006400690066006900650064004400610074006500540069006D006500000000000101180000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #    // aa("Table62",  0, "10000B41000000530061006C00650073005400610062006C006500000049006E00760065006E007400440069006D005000680079007300000042004200000045005000530061006C00650073005400610062006C00650049006E0066006F000000000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E00730000006C7D0B11520065006300490064000000720065006300560065007200730069006F006E0000000180032A0053007500720072006F0067006100740065004B006500790000002A0053007500720072006F0067006100740065004B006500790000000142004F004D000000060000000101180000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #    // aa("Table63",  0, "10000B41000000530061006C00650073005400610062006C006500000049006E00760065006E007400440069006D005000680079007300000042004200000045005000530061006C00650073005400610062006C00650049006E0066006F000000000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E0073000000EC7D0F11520065006300490064000000720065006300560065007200730069006F006E0000000180DD00032A0053007500720072006F0067006100740065004B006500790000002A0053007500720072006F0067006100740065004B006500790000000142004F004D000000060000000101180000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #    // aa("Table64",  0, "10000B41000000530061006C00650073005400610062006C006500000049006E00760065006E007400440069006D005000680079007300000042004200000045005000530061006C00650073005400610062006C00650049006E0066006F000000000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E0073000000EC7D0B10520065006300490064000000720065006300560065007200730069006F006E0000000180DD00032A0053007500720072006F0067006100740065004B006500790000002A0053007500720072006F0067006100740065004B006500790000000142004F004D0000000600000001180000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #    // aa("Table65",  0, "10000B41000000530061006C00650073005400610062006C006500000049006E00760065006E007400440069006D005000680079007300000042004200000045005000530061006C00650073005400610062006C00650049006E0066006F000000000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E0073000000EC7D0B11520065006300490064000000720065006300560065007200730069006F006E0000000180DD00032A0053007500720072006F0067006100740065004B006500790000002A0053007500720072006F0067006100740065004B006500790000000142004F004D0000000600000001011F00000001560061006C0069006400460072006F006D000000560061006C006900640054006F0000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #    // aa("Table66",  0, "10000B41000000530061006C00650073005400610062006C006500000049006E00760065006E007400440069006D005000680079007300000042004200000045005000530061006C00650073005400610062006C00650049006E0066006F000000000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E0073000000EC7D0B11520065006300490064000000720065006300560065007200730069006F006E0000000180DD00032A0053007500720072006F0067006100740065004B006500790000002A0053007500720072006F0067006100740065004B006500790000000142004F004D0000000600000001011F00000002560061006C0069006400460072006F006D000000560061006C006900640054006F0000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #    // aa("Table70",  0, "10000B41000000530061006C00650073005400610062006C006500000049006E00760065006E007400440069006D005000680079007300000042004200000045005000530061006C00650073005400610062006C00650049006E0066006F000000000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E0073000000EC7D0BD1520065006300490064000000720065006300560065007200730069006F006E0000000180DD01032A0053007500720072006F0067006100740065004B006500790000002A0053007500720072006F0067006100740065004B006500790000000142004F004D00000006000000010149006E007300740061006E0063006500520065006C006100740069006F006E0054007900700065000000180000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #    // aa("Table71",  0, "10000B41000000530061006C00650073005400610062006C006500000049006E00760065006E007400440069006D005000680079007300000042004200000045005000530061006C00650073005400610062006C00650049006E0066006F000000000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E0073000000EC7D0BF1520065006300490064000000720065006300560065007200730069006F006E0000000180DD01032A0053007500720072006F0067006100740065004B006500790000002A0053007500720072006F0067006100740065004B006500790000000142004F004D0000000600000001010149006E007300740061006E0063006500520065006C006100740069006F006E0054007900700065000000180000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #    // aa("Table72",  0, "10000B41000000530061006C00650073005400610062006C006500000049006E00760065006E007400440069006D005000680079007300000042004200000045005000530061006C00650073005400610062006C00650049006E0066006F000000000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E0073000000EC7D0BB95400610062006C006500370031000000520065006300490064000000720065006300560065007200730069006F006E00000001800001032A0053007500720072006F0067006100740065004B006500790000002A0053007500720072006F0067006100740065004B006500790000000142004F004D00000006000000010101180000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #    aa("Table45_2",  0, "10000B41000000000049006E00760065006E007400440069006D005000680079007300000042004200000045005000530061006C00650073005400610062006C00650049006E0066006F000000000043000000520055000000500075007200630068005400610062006C0065000000480063006D0057006F0072006B006500720050006F0073006900740069006F006E0073000000CC5D0A11520065006300490064000000720065006300560065007200730069006F006E00000040DD00032A0053007500720072006F0067006100740065004B006500790000002A0053007500720072006F0067006100740065004B00650079000000010200000101180000005200550000006D006F006400690066006900650064004400610074006500540069006D0065000000");
+    #}
+    #/*
+    #    str2Scan = BinData::dataToString(UtilElements.code);
+    #    str2Scan = strRem(str2Scan, "\n\r");
+    #
+    #aa(0, "100008410000000000000042000000000000004300000050000A0001040000080000000000");
+    #aa(0, "10000841000000000000000000000000    004300000050000200040100080000000000");
+    #*/
+  ENDSOURCE
+  PROPERTIES
+    Origin              #{F9406058-9B95-492E-8D33-D5EB2AF9B7C6}
+  ENDPROPERTIES
+  
+
+***Element: JOB
+
+; Microsoft Dynamics AX Job: JEV007444_2 выгружен
+; --------------------------------------------------------------------------------
+  JOBVERSION 1
+  
+  SOURCE #JEV007444_2
+    #// JEV007444 "Tech_Сделать защиту от изменения типа таблицы в аксапте", PKoz 22.05.2023
+    #static void JEV007444_2(Args _args)
+    #{
+    #    container   con;
+    #    TreeNode        treeNode;
+    #    str     path =
+    #
+    #    // @"\Data Dictionary\Maps\Map40"
+    #    // @"\Data Dictionary\Tables\Table40"
+    #    // @"\Data Dictionary\Tables\Table41"
+    #    @"\Data Dictionary\Tables\AssetDepEntitySource_JP_TGCRegVisC_2"
+    #    ;
+    #    ;
+    #
+    #    // asObject(ref) ===  SysDictClass::as(ref, classNum(Object))
+    #    // info(asObject(new InventCostPreCloseNonFinTransferHelper()).buildCreateSPStmt()); return;
+    #    // info(SqlSystem::modelDatabaseBackendName()); return;
+    #    // info(TreeNode::findNode(path).AOTgetProperties(true, true, true));
+    #
+    #    // info("111" + TreeNode::findNode(path).AOTgetProperties(true, true, true));
+    #    treeNode = TreeNode::findNode(path);
+    #    info("111" + treeNode.AOTgetProperties(true, true, true));
+    #    // return;
+    #    // info("011" + TreeNode::findNode(path).AOTgetProperties(false, true, true));
+    #    // info("101" + TreeNode::findNode(path).AOTgetProperties(true, false, true));
+    #    // info("110" + TreeNode::findNode(path).AOTgetProperties(true, true, false));
+    #
+    #    // info("includeInvisible   includeReadOnly   includeNonExportable");
+    #    // info(TreeNode::findNode(@"\Security\Roles\AllView_MRC\Permissions\Forms\FormTest14\BUTTON").AOTgetProperty("name"));
+    #    // SecurityUtil::flushAll();
+    #    // info(TreeNode::findNode(path).AOTgetSource());
+    #    // treeNode = TreeNode::findNode(path);
+    #    // info(treeNode.AOTgetPropertiesExt().toString());
+    #    con = ["TableType","FormRef","SystemTable","ConfigurationKey","CacheLookup", "Visible",
+    #        "SupportInheritance", "TableContents", "SystemTable",
+    #        "SecurityKey", "AOSAuthorization", "CreateRecIdIndex", "SaveDataPerCompany", "SaveDataPerPartition",
+    #        "TableGroup", "PrimaryIndex", "ClusterIndex", "ReplacementKey", "IsLookup", "AnalysisDimensionType",
+    #        "AnalysisIdentifier", "SingularLabel", "ModifiedDateTime", "ModifiedBy", "ModifiedTransactionId", "DEL_modifiedTime",
+    #        "CreatedDateTime", "CreatedBy", "CreatedTransactionId", "DEL_createdTime", "OccEnabled", "DeveloperDocumentation",
+    #        "EntityRelationshipType", "Extends", "Abstract", "InstanceRelationType", "SupportInheritance",
+    #        "ValidTimeStateFieldType", "CountryRegionCodes", "CountryRegionContextField", "MaxAccessMode", "EnforceFKRelation",
+    #        "TitleField1", "TitleField2", "SearchLinkRefName", "SearchLinkRefType", "PreviewPartRef", "ReportRef", "ListPageRef",
+    #        "FormRef", "Label"
+    #    ];
+    #
+    #    // asObject(new ViewTableProps_MRC()).view("AccessRightsList_MRC",  0, 2000, con);
+    #    // asObject(new ViewTableProps_MRC()).view("AccessRightsListBackup_MRC",  0, 2000, con);
+    #    // asObject(new ViewTableProps_MRC()).view("AifDocumentSetFilter",  0, 2000, con);
+    #}
+  ENDSOURCE
+  PROPERTIES
+    Origin              #{5ADB9EE4-FAB2-4D95-B346-688408241D4C}
+  ENDPROPERTIES
+  
+
+***Element: JOB
+
+; Microsoft Dynamics AX Job: JEV007444_3 выгружен
+; --------------------------------------------------------------------------------
+  JOBVERSION 1
+  
+  SOURCE #JEV007444_3
+    #static void JEV007444_3(Args _args)
+    #{
+    #    ;
+    #
+    #    info(SysDictTable::sqlQueryRestoreTablePropsByTempl_MRC(tableNum(Table81), "AXJW12_DEV2_model", false));
+    #    info(SysDictTable::sqlQueryRestoreTablePropsByTempl_MRC(tableNum(Table82), "AXJW12_DEV2_model", false));
+    #    info(SysDictTable::sqlQueryRestoreTablePropsByTempl_MRC(tableNum(Map82),   "AXJW12_DEV2_model", false));
+    #}
+  ENDSOURCE
+  PROPERTIES
+    Origin              #{6AD933EF-B93A-49D7-8A12-D83D3936BAAC}
+  ENDPROPERTIES
+  
+
+***Element: JOB
+
+; Microsoft Dynamics AX Job: JEV007444_4 выгружен
+; --------------------------------------------------------------------------------
+  JOBVERSION 1
+  
+  SOURCE #JEV007444_4
+    #static void JEV007444_4(Args _args)
+    #{
+    #    ;
+    #
+    #    // тестируем перебитие свойств со сменой типа из аксапты и проверяем как поведет себя аксапта (отработает ли триггер и как на его работу отреагирует аксапта)
+    #
+    #    ViewTableProps_MRC::runSql(
+    #@"
+    #use [AXJW12_DEV2_model];
+    #declare @modifTable bigint = 1388458; -- table81
+    #
+    #declare @templTable bigint = 1388462; -- Map82
+    #--declare @templTable bigint = 1388460; -- Table82
+    #
+    #UPDATE BAD_BASE -- [AXJW12_DEV2_model].[DBO].[ModelElementData]
+    #-- SET [AXJW12_DEV2_model].[DBO].[ModelElementData].Properties = GOOD_BASE.Properties
+    #SET BAD_BASE.Properties = GOOD_BASE.Properties
+    #FROM [AXJW12_DEV2_model].[DBO].[ModelElementData] AS BAD_BASE
+    #LEFT JOIN [AXJW12_DEV2_model].[DBO].[ModelElementData] AS GOOD_BASE
+    #    ON   BAD_BASE.ElementHandle = @modifTable
+    #    AND GOOD_BASE.ElementHandle = @templTable
+    #WHERE   GOOD_BASE.ElementHandle = @templTable
+    #AND GOOD_BASE.LayerId = (SELECT MAX(LayerId) from [AXJW12_DEV2_model].[DBO].[ModelElementData] AS GOOD_BASE2 where GOOD_BASE2.ElementHandle = @templTable)
+    #AND BAD_BASE.LayerId  = (SELECT MAX(LayerId) from [AXJW12_DEV2_model].[DBO].[ModelElementData] AS BAD_BASE2  where BAD_BASE2.ElementHandle  = @modifTable)
+    #"
+    #    );
+    #}
+  ENDSOURCE
+  PROPERTIES
+    Origin              #{A8FA4A17-0884-48D0-BC46-5C6AD8B90A1A}
+  ENDPROPERTIES
+  
+
+***Element: PRN
+
+; Microsoft Dynamics AX Project : JEV007444_Public unloaded
+; --------------------------------------------------------------------------------
+  PROJECTVERSION 2
+  
+  PROJECT #JEV007444_Public
+  SHARED
+  PROPERTIES
+    Name                #JEV007444_Public
+    Origin              #{1D590F64-28A1-4D26-B0FF-C3FF2903D95A}
+  ENDPROPERTIES
+  
+    PROJECTCLASS ProjectNode
+    GROUP #Classes
+      PROPERTIES
+        Name                #Classes
+        ProjectGroupType    #Classes
+        GroupMask           #
+        PreventEditProperties #No
+      ENDPROPERTIES
+      
+      BEGINNODE
+        FILETYPE 0
+        UTILTYPE 45
+        UTILOBJECTID 57095
+        NODETYPE 329
+        NAME #ModelElementDataTriggers_MRC
+      ENDNODE
+      BEGINNODE
+        FILETYPE 0
+        UTILTYPE 45
+        UTILOBJECTID 57094
+        NODETYPE 329
+        NAME #ViewTableProps_MRC
+      ENDNODE
+      ENDGROUP
+      
+    GROUP #Jobs
+      PROPERTIES
+        Name                #Jobs
+        ProjectGroupType    #Jobs
+        GroupMask           #
+        PreventEditProperties #No
+      ENDPROPERTIES
+      
+      BEGINNODE
+        FILETYPE 0
+        UTILTYPE 5
+        UTILOBJECTID 0
+        NODETYPE 215
+        NAME #JEV007444
+      ENDNODE
+      BEGINNODE
+        FILETYPE 0
+        UTILTYPE 5
+        UTILOBJECTID 0
+        NODETYPE 215
+        NAME #JEV007444_2
+      ENDNODE
+      BEGINNODE
+        FILETYPE 0
+        UTILTYPE 5
+        UTILOBJECTID 0
+        NODETYPE 215
+        NAME #JEV007444_3
+      ENDNODE
+      BEGINNODE
+        FILETYPE 0
+        UTILTYPE 5
+        UTILOBJECTID 0
+        NODETYPE 215
+        NAME #JEV007444_4
+      ENDNODE
+      ENDGROUP
+      
+  ENDPROJECT
+  
+
+***Element: END
