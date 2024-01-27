@@ -9,7 +9,7 @@ Run sequentially sql scripts in your axapta model database :
 
 or
 
-1. \\Xpo\\Import PKoz_JEV007444_Public_dev.xpo in axapta application.
+1. Import \\Xpo\\PKoz_JEV007444_Public_dev.xpo in axapta application.
 2. Run class ModelElementDataTriggers_MRC
 3. Take from infolog generated sql scripts
 4. Run this scripts  in your axapta model database.
