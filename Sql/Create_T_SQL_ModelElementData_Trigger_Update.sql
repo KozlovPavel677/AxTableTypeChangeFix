@@ -1,4 +1,4 @@
--- JEV007444 "Tech_Сделать защиту от изменения типа таблицы в аксапте", PKoz 23.01.2024
+-- JEV007444 "Tech_РЎРґРµР»Р°С‚СЊ Р·Р°С‰РёС‚Сѓ РѕС‚ РёР·РјРµРЅРµРЅРёСЏ С‚РёРїР° С‚Р°Р±Р»РёС†С‹ РІ Р°РєСЃР°РїС‚Рµ", PKoz 23.01.2024
 -- https://axforum.info/forums/showthread.php?p=426156#post426156
 
 -- USE [AXJW12_DEV2_model]
@@ -14,7 +14,7 @@ CREATE TRIGGER dbo.ModelElementData_Trigger_Update_MRC
 AS 
 
 -- https://learn.microsoft.com/ru-ru/sql/t-sql/statements/create-trigger-transact-sql?view=sql-server-ver16
-if (ROWCOUNT_BIG() = 0) -- должно идти на первом месте даже до SET NOCOUNT ON; иначе всегда выдает 0 и триггер не отрабатывает
+if (ROWCOUNT_BIG() = 0) -- РґРѕР»Р¶РЅРѕ РёРґС‚Рё РЅР° РїРµСЂРІРѕРј РјРµСЃС‚Рµ РґР°Р¶Рµ РґРѕ SET NOCOUNT ON; РёРЅР°С‡Рµ РІСЃРµРіРґР° РІС‹РґР°РµС‚ 0 Рё С‚СЂРёРіРіРµСЂ РЅРµ РѕС‚СЂР°Р±Р°С‚С‹РІР°РµС‚
 begin
 	return
 end
@@ -28,12 +28,12 @@ begin
 	return
 end
 
-IF NOT EXISTS (SELECT 1  -- этот запрос должен отработать быстро, если он что-то вернул, то проверку уже сделаем ниже
+IF NOT EXISTS (SELECT 1  -- СЌС‚РѕС‚ Р·Р°РїСЂРѕСЃ РґРѕР»Р¶РµРЅ РѕС‚СЂР°Р±РѕС‚Р°С‚СЊ Р±С‹СЃС‚СЂРѕ, РµСЃР»Рё РѕРЅ С‡С‚Рѕ-С‚Рѕ РІРµСЂРЅСѓР», С‚Рѕ РїСЂРѕРІРµСЂРєСѓ СѓР¶Рµ СЃРґРµР»Р°РµРј РЅРёР¶Рµ
            FROM inserted AS i, deleted AS d   
            WHERE	i.ElementHandle =  d.ElementHandle
 				AND	i.LayerId		=  d.LayerId
 				AND i.Properties	!= d.Properties
-				-- AND i.ElementHandle in (1388458, 1388460, 1388462) -- отладочное ограничение убрали
+				-- AND i.ElementHandle in (1388458, 1388460, 1388462) -- РѕС‚Р»Р°РґРѕС‡РЅРѕРµ РѕРіСЂР°РЅРёС‡РµРЅРёРµ СѓР±СЂР°Р»Рё
 				AND EXISTS (
 					SELECT 1 
 					FROM ModelElement AS me
@@ -61,7 +61,7 @@ WHERE	i.ElementHandle =  d.ElementHandle
 	AND [dbo].[aMRC_axTableType](i.Properties) != [dbo].[aMRC_axTableType](d.Properties)
 	AND me.ElementHandle = i.ElementHandle
 	AND me.ElementType   = 44
-	-- AND i.ElementHandle in (1388458, 1388460, 1388462) -- отладочное ограничение убрали
+	-- AND i.ElementHandle in (1388458, 1388460, 1388462) -- РѕС‚Р»Р°РґРѕС‡РЅРѕРµ РѕРіСЂР°РЅРёС‡РµРЅРёРµ СѓР±СЂР°Р»Рё
 	;
 
 if (@axTableTypeI is null)
@@ -74,34 +74,34 @@ begin
 	set @errorMsg = N'Axapta kernel has gone crazy. It tries to change the table type from ' + 
 		CAST(@axTableTypeD as nvarchar(max)) + N' to ' + CAST(@axTableTypeI as nvarchar(max)) + N' for axtable ' + @tableName;
 
-	-- RAISERROR (@errorMsg, 16, 1) -- с этим вариантом аос аксапты потом странно глючил - не мог выбрать запись ни из одной таблицы и ничего вставить не мог, в итоге падал
+	-- RAISERROR (@errorMsg, 16, 1) -- СЃ СЌС‚РёРј РІР°СЂРёР°РЅС‚РѕРј Р°РѕСЃ Р°РєСЃР°РїС‚С‹ РїРѕС‚РѕРј СЃС‚СЂР°РЅРЅРѕ РіР»СЋС‡РёР» - РЅРµ РјРѕРі РІС‹Р±СЂР°С‚СЊ Р·Р°РїРёСЃСЊ РЅРё РёР· РѕРґРЅРѕР№ С‚Р°Р±Р»РёС†С‹ Рё РЅРёС‡РµРіРѕ РІСЃС‚Р°РІРёС‚СЊ РЅРµ РјРѕРі, РІ РёС‚РѕРіРµ РїР°РґР°Р»
 	/*
-	Начиналось все так (у нас кастомизация по записи инфолога в базу)
+	РќР°С‡РёРЅР°Р»РѕСЃСЊ РІСЃРµ С‚Р°Рє (Сѓ РЅР°СЃ РєР°СЃС‚РѕРјРёР·Р°С†РёСЏ РїРѕ Р·Р°РїРёСЃРё РёРЅС„РѕР»РѕРіР° РІ Р±Р°Р·Сѓ)
 	Object Server 01: The database reported (session 17 (PKoz)): [Microsoft][SQL Server Native Client 11.0][SQL Server]Invalid object name 'SYSINFOLOGHISTORY_MRC'.. The SQL statement was: "INSERT INTO SYSINFOLOGHISTORY_MRC (INFO,USERID,COMPANYID,COMPUTERNAME,EXCEPTIONTYPE,CREATEDDATETIME,DEL_CREATEDTIME,RECVERSION,PARTITION,RECID) VALUES (?,?,?,?,?,?,?,?,?,?)"
 
-	Затем проскакивали такие ошибки в виндовом логе
+	Р—Р°С‚РµРј РїСЂРѕСЃРєР°РєРёРІР°Р»Рё С‚Р°РєРёРµ РѕС€РёР±РєРё РІ РІРёРЅРґРѕРІРѕРј Р»РѕРіРµ
 	Object Server 01: The database reported (session 1 (-AOS-)): [Microsoft][SQL Server Native Client 11.0][SQL Server]Invalid object name 'SYSLASTVALUE'.. The SQL statement was: "SELECT T1.USERID,T1.RECORDTYPE,T1.ELEMENTNAME,T1.DESIGNNAME,T1.ISKERNEL,T1.COMPANY,T1.RECVERSION,T1.PARTITION,T1.RECID,T1.VALUE FROM SYSLASTVALUE T1 WHERE ((PARTITION=5637144576) AND ((((RECORDTYPE=?) AND (ELEMENTNAME=?)) AND (DESIGNNAME=?)) AND (COMPANY=?)))"
 	Object Server 01: The database reported (session 2 (-AOS-)): [Microsoft][SQL Server Native Client 11.0][SQL Server]Invalid object name 'SYSSERVERCONFIG'.. The SQL statement was: "SELECT TOP 1 T1.ENABLEBATCH,T1.SERVERID,T1.LOADBALANCINGENABLED,T1.CLUSTERREFRECID,101090,T2.MAXBATCHSESSIONS,T2.RECID FROM SYSSERVERCONFIG T1 CROSS JOIN BATCHSERVERCONFIG T2 WHERE (T1.SERVERID=?) AND ((T2.SERVERID=T1.SERVERID) AND ((((T2.ENDTIME>=T2.STARTTIME) AND (?>=T2.STARTTIME)) AND (?<=T2.ENDTIME)) OR ((T2.ENDTIME<T2.STARTTIME) AND ((?>=T2.STARTTIME) OR (?<=T2.ENDTIME)))))"
-	А затем постоянно шли такие :
+	Рђ Р·Р°С‚РµРј РїРѕСЃС‚РѕСЏРЅРЅРѕ С€Р»Рё С‚Р°РєРёРµ :
 	Object Server 01: The database reported (session 2 (-AOS-)): [Microsoft][SQL Server Native Client 11.0][SQL Server]Invalid object name 'SYSCLIENTSESSIONS'.. The SQL statement was: "SELECT T1.SESSIONID,T1.SERVERID,T1.VERSION,T1.LOGINDATETIME,T1.LOGINDATETIMETZID,T1.STATUS,T1.USERID,T1.SID,T1.USERLANGUAGE,T1.HELPLANGUAGE,T1.CLIENTTYPE,T1.SESSIONTYPE,T1.CLIENTCOMPUTER,T1.DATAPARTITION,T1.RECVERSION,T1.RECID FROM SYSCLIENTSESSIONS T1 WHERE (SESSIONID=?)"
 	Object Server 01: The database reported (session 17 (PKoz)): [Microsoft][SQL Server Native Client 11.0][SQL Server]Invalid object name 'SYSCACHEFLUSH'.. The SQL statement was: "SELECT T1.SCOPE,T1.FLUSHVERSION,T1.MODIFIEDDATETIME,T1.RECVERSION,T1.RECID,T1.CLEARDATA,T1.FLUSHDATA FROM SYSCACHEFLUSH T1 WHERE (SCOPE=?)"
 	Object Server 01: The database reported (session 1 (-AOS-)): [Microsoft][SQL Server Native Client 11.0][SQL Server]Invalid object name 'SYSCLIENTSESSIONS'.. The SQL statement was: "SELECT T1.SESSIONID,T1.SERVERID,T1.VERSION,T1.LOGINDATETIME,T1.LOGINDATETIMETZID,T1.STATUS,T1.USERID,T1.SID,T1.USERLANGUAGE,T1.HELPLANGUAGE,T1.CLIENTTYPE,T1.SESSIONTYPE,T1.CLIENTCOMPUTER,T1.DATAPARTITION,T1.RECVERSION,T1.RECID FROM SYSCLIENTSESSIONS T1 WHERE ((STATUS=?) AND (SERVERID=?))"
-	Потом нередко аос падал или его приходилось рестартовать.
+	РџРѕС‚РѕРј РЅРµСЂРµРґРєРѕ Р°РѕСЃ РїР°РґР°Р» РёР»Рё РµРіРѕ РїСЂРёС…РѕРґРёР»РѕСЃСЊ СЂРµСЃС‚Р°СЂС‚РѕРІР°С‚СЊ.
 	*/
 
-	RAISERROR (@errorMsg, 20, 1) WITH LOG -- а тут из-за severity >= 20 сиквел вообще закрывает соединение, но лучше уж так. 
-	-- Все равно ситуация редкая и критичная. И аос после такого нормально себя вел.
-	-- Единственная проблема, которую встретили, сразу после такого закрытия сессии, следующий запрос выдавал ошибку 
-	-- в моем случае такую 
-	-- Object Server 01: The database reported (session 17 (PKoz)): [Microsoft][SQL Server Native Client 11.0]Ошибка связи. The SQL statement was: "SELECT @@ROWCOUNT"
-	-- (это потому что при тестировании сразу после запроса индуцирующего проблемную ситуацию со сменой типа таблицы, дальше шел запрос "SELECT @@ROWCOUNT" )
-	-- видимо аксапта не сразу понимает, что соединение с БД уже закрыто (по инициативе SQL Server) и пытается очередной запрос послать и тут то до нее доходит...
-	-- Но, что хорошо, в этом случае она просто пересоздает соединение и странных проблем нет. 
-	-- Или мы не выявили пока.
+	RAISERROR (@errorMsg, 20, 1) WITH LOG -- Р° С‚СѓС‚ РёР·-Р·Р° severity >= 20 СЃРёРєРІРµР» РІРѕРѕР±С‰Рµ Р·Р°РєСЂС‹РІР°РµС‚ СЃРѕРµРґРёРЅРµРЅРёРµ, РЅРѕ Р»СѓС‡С€Рµ СѓР¶ С‚Р°Рє. 
+	-- Р’СЃРµ СЂР°РІРЅРѕ СЃРёС‚СѓР°С†РёСЏ СЂРµРґРєР°СЏ Рё РєСЂРёС‚РёС‡РЅР°СЏ. Р Р°РѕСЃ РїРѕСЃР»Рµ С‚Р°РєРѕРіРѕ РЅРѕСЂРјР°Р»СЊРЅРѕ СЃРµР±СЏ РІРµР».
+	-- Р•РґРёРЅСЃС‚РІРµРЅРЅР°СЏ РїСЂРѕР±Р»РµРјР°, РєРѕС‚РѕСЂСѓСЋ РІСЃС‚СЂРµС‚РёР»Рё, СЃСЂР°Р·Сѓ РїРѕСЃР»Рµ С‚Р°РєРѕРіРѕ Р·Р°РєСЂС‹С‚РёСЏ СЃРµСЃСЃРёРё, СЃР»РµРґСѓСЋС‰РёР№ Р·Р°РїСЂРѕСЃ РІС‹РґР°РІР°Р» РѕС€РёР±РєСѓ 
+	-- РІ РјРѕРµРј СЃР»СѓС‡Р°Рµ С‚Р°РєСѓСЋ 
+	-- Object Server 01: The database reported (session 17 (PKoz)): [Microsoft][SQL Server Native Client 11.0]РћС€РёР±РєР° СЃРІСЏР·Рё. The SQL statement was: "SELECT @@ROWCOUNT"
+	-- (СЌС‚Рѕ РїРѕС‚РѕРјСѓ С‡С‚Рѕ РїСЂРё С‚РµСЃС‚РёСЂРѕРІР°РЅРёРё СЃСЂР°Р·Сѓ РїРѕСЃР»Рµ Р·Р°РїСЂРѕСЃР° РёРЅРґСѓС†РёСЂСѓСЋС‰РµРіРѕ РїСЂРѕР±Р»РµРјРЅСѓСЋ СЃРёС‚СѓР°С†РёСЋ СЃРѕ СЃРјРµРЅРѕР№ С‚РёРїР° С‚Р°Р±Р»РёС†С‹, РґР°Р»СЊС€Рµ С€РµР» Р·Р°РїСЂРѕСЃ "SELECT @@ROWCOUNT" )
+	-- РІРёРґРёРјРѕ Р°РєСЃР°РїС‚Р° РЅРµ СЃСЂР°Р·Сѓ РїРѕРЅРёРјР°РµС‚, С‡С‚Рѕ СЃРѕРµРґРёРЅРµРЅРёРµ СЃ Р‘Р” СѓР¶Рµ Р·Р°РєСЂС‹С‚Рѕ (РїРѕ РёРЅРёС†РёР°С‚РёРІРµ SQL Server) Рё РїС‹С‚Р°РµС‚СЃСЏ РѕС‡РµСЂРµРґРЅРѕР№ Р·Р°РїСЂРѕСЃ РїРѕСЃР»Р°С‚СЊ Рё С‚СѓС‚ С‚Рѕ РґРѕ РЅРµРµ РґРѕС…РѕРґРёС‚...
+	-- РќРѕ, С‡С‚Рѕ С…РѕСЂРѕС€Рѕ, РІ СЌС‚РѕРј СЃР»СѓС‡Р°Рµ РѕРЅР° РїСЂРѕСЃС‚Рѕ РїРµСЂРµСЃРѕР·РґР°РµС‚ СЃРѕРµРґРёРЅРµРЅРёРµ Рё СЃС‚СЂР°РЅРЅС‹С… РїСЂРѕР±Р»РµРј РЅРµС‚. 
+	-- РР»Рё РјС‹ РЅРµ РІС‹СЏРІРёР»Рё РїРѕРєР°.
 	-- https://learn.microsoft.com/en-us/sql/t-sql/language-elements/raiserror-transact-sql?view=sql-server-ver16
 	-- https://learn.microsoft.com/en-us/sql/relational-databases/errors-events/database-engine-error-severities?view=sql-server-ver16
 	-- Severity levels from 0 through 18 can be specified by any user. Severity levels from 19 through 25 can only be specified by members of the sysadmin fixed server role or users with ALTER TRACE permissions.
-	-- Для использования Severity levels = 20 как в нашем случае, не забыть проверить права на SQL для учетки аоса !
+	-- Р”Р»СЏ РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ Severity levels = 20 РєР°Рє РІ РЅР°С€РµРј СЃР»СѓС‡Р°Рµ, РЅРµ Р·Р°Р±С‹С‚СЊ РїСЂРѕРІРµСЂРёС‚СЊ РїСЂР°РІР° РЅР° SQL РґР»СЏ СѓС‡РµС‚РєРё Р°РѕСЃР° !
 	-- https://learn.microsoft.com/en-us/sql/t-sql/language-elements/raiserror-transact-sql?view=sql-server-ver16&redirectedfrom=MSDN#permissions
 
 	ROLLBACK TRANSACTION; 
